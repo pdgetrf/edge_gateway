@@ -113,13 +113,16 @@ class Divider(object):
         self.droplet = droplet.name
         self.ip = droplet.ip
         self.mac = droplet.mac
+    
+    def update_gateway_host(self, gateway):
+        self.droplet_obj.update_substrate(gateway)
 
     def update_net(self, net, add=True):
         for bouncer in list(net.bouncers.values()):
             if add:
                 if bouncer.name not in self.bouncers.keys():
-                    logger.info("Bouncer {} added for Net {}".format(
-                        bouncer.name, net.name))
+                    logger.info("Bouncer {} for Net {} added to divider {} ".format(
+                        bouncer, net.name, self.name))
                     self.bouncers[bouncer.name] = bouncer
                     self.droplet_obj.update_substrate(bouncer)
             else:

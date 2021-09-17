@@ -43,6 +43,17 @@ struct bpf_map_def SEC("maps") jmp_table = {
 };
 BPF_ANNOTATE_KV_PAIR(jmp_table, __u32, __u32);
 
+/*
+struct bpf_map_def SEC("maps") agentmetadata_map = {
+	.type = BPF_MAP_TYPE_ARRAY,
+	.key_size = sizeof(int),
+	.value_size = sizeof(struct agent_metadata_t),
+	.max_entries = 1,
+	.map_flags = 0,
+};
+BPF_ANNOTATE_KV_PAIR(agentmetadata_map, int, struct agent_metadata_t);
+*/
+
 struct bpf_map_def SEC("maps") networks_map = {
 	.type = BPF_MAP_TYPE_LPM_TRIE,
 	.key_size = sizeof(struct network_key_t),

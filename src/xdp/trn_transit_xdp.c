@@ -153,11 +153,20 @@ transit switch of that network, OW forward to the transit router. */
 	dst_r_ep = bpf_map_lookup_elem(&ep_host_cache, &dst_epkey);
 
 	/* Rewrite RTS and update cache*/
+
 	if (net) {
-		trn_update_ep_host_cache(pkt, tunnel_id, inner_src_ip);
-		pkt->rts_opt->rts_data.host.ip = pkt->ip->daddr;
-		__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
-				 pkt->eth->h_dest, 6 * sizeof(unsigned char));
+		if  (pkt->ip->saddr == 0xd9021fac) { //0xd9021fac --> gateway host (172.31.2.217) 
+ 			// traffic from 
+			bpf_debug("--> goose skipped updating ep_host_cache from src %x\n", 
+				pkt->ip->saddr);
+		} else {
+			bpf_debug("--> goose updating ep host cache: src %x dst %x\n", 
+					pkt->ip->saddr, pkt->ip->daddr);
+			trn_update_ep_host_cache(pkt, tunnel_id, inner_src_ip);
+			pkt->rts_opt->rts_data.host.ip = pkt->ip->daddr;
+			__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
+					pkt->eth->h_dest, 6 * sizeof(unsigned char));
+		}
 	}
 
 	if (dst_r_ep) {
@@ -207,6 +216,16 @@ transit switch of that network, OW forward to the transit router. */
 		return trn_rewrite_remote_mac(pkt);
 	}
 
+	bpf_debug("[Transit:%d:] goose1 src: %x dst: %x\n", 
+		__LINE__, inner_src_ip, inner_dst_ip);
+/*
+        if (inner_dst_ip==0x6f6fa8c0) {
+		bpf_debug("[Transit:%d:] goose2 %x\n", __LINE__, inner_dst_ip);
+		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, 0xde0e1fac);
+		return trn_rewrite_remote_mac(pkt);
+	}
+*/
+
 	/* Now forward the packet to the VPC router */
 	struct vpc_key_t vpckey;
 	struct vpc_t *vpc;
@@ -232,7 +251,10 @@ transit switch of that network, OW forward to the transit router. */
 		return XDP_DROP;
 	}
 
-	bpf_debug("[Transit:%d:] Sending packet to router!\n", __LINE__);
+	bpf_debug("[Transit:%d:] Sending packet to router!\n", 
+			__LINE__);
+	bpf_debug("goose old src %x, new src %x!\n", 
+			pkt->ip->saddr, pkt->ip->daddr);
 	trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr,
 				vpc->routers_ips[routeridx]);
 	return trn_rewrite_remote_mac(pkt);
@@ -635,6 +657,30 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 		return XDP_ABORTED;
 	}
 
+
+	if (pkt->inner_arp->ar_op == bpf_htons(ARPOP_REPLY)) {
+		bpf_debug("[Transit:%d:] goose ARPOP_REPLY\n"); 
+	} else {
+		bpf_debug("[Transit:%d:] goose ARPOP_REQUEST\n"); 
+	}
+        bpf_debug("[Transit:%d:] goose mac src: %x dst: %x\n", 
+			__LINE__, *sha, *tha);
+		
+	
+        bpf_debug("[Transit:%d:] goose ip src: %x dst: %x\n", 
+			__LINE__, *sip, *tip);
+
+        if (*tip == 0x17aa8c0) {	// 0x17aa8c0 --> 192.168.122.1
+		bpf_debug("--> goose gw: src %x dst %x\n", 
+				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
+//		return XDP_PASS;	// send to user space (e.g. for tcpdump to catch)
+	} else {
+
+		bpf_debug("--> goose none-gw: src %x dst %x\n", 
+				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
+	}
+        
+
 	__be64 tunnel_id = trn_vni_to_tunnel_id(pkt->geneve->vni);
 
 	__builtin_memcpy(&epkey.tunip[0], &tunnel_id, sizeof(tunnel_id));
@@ -859,6 +905,17 @@ int _transit(struct xdp_md *ctx)
 	pkt.data_end = (void *)(long)ctx->data_end;
 	pkt.xdp = ctx;
 
+	/****
+	 * trying to find info from the agent
+	int key = 0;
+	pkt.agent_md = bpf_map_lookup_elem(&agentmetadata_map, &key);
+	if (!pkt.agent_md) {
+		bpf_debug("DROP (BUG): Agent metadata is missing\n");
+		return XDP_DROP;
+	}
+	bpf_debug("[Transit: goosex eth.ip %x]\n", pkt.agent_md->eth.ip);
+	 ***/
+
 	struct tunnel_iface_t *itf;
 
 	int k = 0;
@@ -872,7 +929,7 @@ int _transit(struct xdp_md *ctx)
 
 	pkt.itf_ipv4 = itf->ip;
 	pkt.itf_idx = itf->iface_index;
-
+		
 	int action = trn_process_eth(&pkt);
 
 	/* The agent may tail-call this program, override XDP_TX to
