@@ -108,6 +108,8 @@ class Droplet(object):
         if obj.name not in self.known_substrates.keys():
             logger.info("DROPLET_SUBSTRATE: Updated")
             self.known_substrates[obj.name] = obj.droplet_obj.ip
+
+        logger.info("update_substrate in action for : {}, ip={}, mac={}".format(obj.name, obj.droplet_obj.ip, obj.droplet_obj.mac))
         self.rpc.update_substrate_ep(obj.droplet_obj.ip, obj.droplet_obj.mac)
 
     def delete_substrate(self, obj):

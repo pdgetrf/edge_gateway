@@ -71,7 +71,14 @@ class DividerOperator(object):
         div.set_status(OBJ_STATUS.divider_status_provisioned)
         div.update_obj()
 
+    def update_divider_with_gateway(self):
+        droplets = set(self.store.get_all_droplets())
+        # print out all the droplets
+        for dd in droplets:
+            logger.info("zzzzz {}".format(dd))
+
     def update_divider_with_bouncers(self, bouncer, net):
+        logger.info("goose 1")
         dividers = self.store.get_dividers_of_vpc(bouncer.vpc).values()
         for d in dividers:
             d.update_net(net)
