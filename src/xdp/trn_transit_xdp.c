@@ -70,6 +70,17 @@ static __inline int trn_rewrite_remote_mac(struct transit_packet *pkt)
 			  __LINE__);
 		return XDP_DROP;
 	}
+		
+	if  (pkt->ip->daddr == 0xd9021fac) {
+		bpf_debug("--> goose --- : dst mac %x:%x:%x\n",
+				remote_ep->mac[0], 
+				remote_ep->mac[1],
+				remote_ep->mac[2]);
+		bpf_debug("--> goose ---: dst mac %x:%x:%x\n",
+				remote_ep->mac[3],
+				remote_ep->mac[4],
+				remote_ep->mac[5]);
+	}
 
 	trn_set_src_mac(pkt->data, pkt->eth->h_dest);
 	trn_set_dst_mac(pkt->data, remote_ep->mac);
@@ -154,10 +165,12 @@ transit switch of that network, OW forward to the transit router. */
 
 	/* Rewrite RTS and update cache*/
 	if (net) {
+		bpf_debug("--> goose updating ep host cache: src %x dst %x\n", 
+				pkt->ip->saddr, pkt->ip->daddr);
 		trn_update_ep_host_cache(pkt, tunnel_id, inner_src_ip);
 		pkt->rts_opt->rts_data.host.ip = pkt->ip->daddr;
 		__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
-				 pkt->eth->h_dest, 6 * sizeof(unsigned char));
+				pkt->eth->h_dest, 6 * sizeof(unsigned char));
 	}
 
 	if (dst_r_ep) {
@@ -199,13 +212,16 @@ transit switch of that network, OW forward to the transit router. */
 			return XDP_DROP;
 		}
 
-		bpf_debug("[Transit:%d:] Sending packet to switch!\n",
-			  __LINE__);
+		bpf_debug("[Transit:%d:] Sending packet to switch %x!\n",
+			  __LINE__, net->switches_ips[swidx]);
 
 		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr,
 					net->switches_ips[swidx]);
 		return trn_rewrite_remote_mac(pkt);
 	}
+
+	bpf_debug("[Transit:%d:] goose1 src: %x dst: %x\n", 
+		__LINE__, inner_src_ip, inner_dst_ip);
 
 	/* Now forward the packet to the VPC router */
 	struct vpc_key_t vpckey;
@@ -232,7 +248,10 @@ transit switch of that network, OW forward to the transit router. */
 		return XDP_DROP;
 	}
 
-	bpf_debug("[Transit:%d:] Sending packet to router!\n", __LINE__);
+	bpf_debug("[Transit:%d:] Sending packet to router!\n", 
+			__LINE__);
+	bpf_debug("goose old src %x, new src %x!\n", 
+			pkt->ip->saddr, pkt->ip->daddr);
 	trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr,
 				vpc->routers_ips[routeridx]);
 	return trn_rewrite_remote_mac(pkt);
@@ -451,6 +470,92 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
 		pkt->inner_ipv4_tuple.dport = pkt->inner_udp->dest;
 	}
 
+        bpf_debug("[Transit:%d:] goose ip : src %x dst %x\n", 
+			__LINE__, pkt->inner_ipv4_tuple.saddr, pkt->inner_ipv4_tuple.daddr);
+
+        bpf_debug("[Transit:%d:] goose ip port : src %x dst %x\n", 
+			__LINE__, pkt->inner_ipv4_tuple.sport, pkt->inner_ipv4_tuple.dport);
+        
+	bpf_debug("[Transit:%d:] goose my ip : %x\n", 
+			__LINE__, pkt->ip->daddr);
+		
+	bpf_debug("--> goose zzz1 %x\n",
+			(0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x07aa8c0);	// pkt->ip->daddr is ip of the current host
+	
+	
+	// get subnet of dst ip
+	// d7aa8c0 (13.122.168.192) 	1101   0111 1010 1010 1000 1100 0000
+	// 57aa8c0 (5.122.168.192)      0101   0111 1010 1010 1000 1100 0000
+	//  						&
+	// 0FFFFFF                      0000   1111 1111 1111 1111 1111 1111	
+	//
+	// and then 
+	//						^
+	// 0x07aa8c0 (0.122.168.192)	0000   0111 1010 1010 1000 1100 0000
+	// 0x000a8c0 (0.0.168.192)	0000   0000 0000 1010 1000 1100 0000 
+
+	/* logic here:
+	   if it's the left portal AND target ip is the right subnet, forward to the right gw!
+	   if it's the right portal AND target ip is the left subnet, forward to the left gw!
+	   process as mizar usual otherwise
+	 */
+	bpf_debug("--> goose portal checks: %x %x\n",
+			(pkt->ip->daddr == 0xd9021fac && !((0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x07aa8c0)),
+			((pkt->ip->daddr == 0xf1fac && !((0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x000a8c0))));
+	if (
+			// 0xd9021fac 	--> left portal host (172.31.2.217)
+			// 0xf1fac 	--> right portal host (172.31.15.0)
+			(pkt->ip->daddr == 0xd9021fac && !((0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x07aa8c0)) ||
+			((pkt->ip->daddr == 0xf1fac && !((0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x000a8c0)))
+	   ) {
+		bpf_debug("--> goose portal transfer: src %x dst %x\n",
+				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
+
+		// set src mac
+		trn_set_src_mac(pkt->data, pkt->eth->h_dest);
+
+		unsigned char dst_mac[6];
+		__u32 remote_portal_ip;
+		if (pkt->ip->daddr == 0xd9021fac) {
+			// left portal function
+			remote_portal_ip = 0xf1fac;	// 0xf1fac -> right portal host (172.31.15.0)
+
+			// right portal mac: 0a:b4:73:14:b9:91
+			dst_mac[0]=0xa;
+			dst_mac[1]=0xb4;
+			dst_mac[2]=0x73;
+			dst_mac[3]=0x14;
+			dst_mac[4]=0xb9;
+			dst_mac[5]=0x91;
+
+		} else {
+			// right portal function
+			remote_portal_ip = 0xd9021fac;	//0xd9021fac --> left portal host (172.31.2.217)
+
+			// left portal mac: 0a:da:ad:8e:df:f7
+			dst_mac[0]=0xa;
+			dst_mac[1]=0xda;
+			dst_mac[2]=0xad;
+			dst_mac[3]=0x8e;
+			dst_mac[4]=0xdf;
+			dst_mac[5]=0xf7;
+		}
+
+		// set dst src and dst ip
+		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, remote_portal_ip);
+
+		// set dst mac
+		trn_set_src_mac(pkt->data, pkt->eth->h_dest);
+		trn_set_dst_mac(pkt->data, dst_mac);
+
+		bpf_debug("--> goose sending to portal%x:\n",
+				remote_portal_ip);
+		return XDP_TX;
+	} else {
+		bpf_debug("--> goose none-portal: src %x dst %x\n",
+				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
+	}
+
 	__be64 tunnel_id = trn_vni_to_tunnel_id(pkt->geneve->vni);
 
 	if (pkt->inner_ipv4_tuple.protocol == IPPROTO_TCP || pkt->inner_ipv4_tuple.protocol == IPPROTO_UDP) {
@@ -635,6 +740,25 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 		return XDP_ABORTED;
 	}
 
+
+	if (pkt->inner_arp->ar_op == bpf_htons(ARPOP_REPLY)) {
+		bpf_debug("[Transit:%d:] goose ARPOP_REPLY from %x\n",
+			__LINE__, pkt->ip->saddr);
+	} else {
+		bpf_debug("[Transit:%d:] goose ARPOP_REQUEST from %x\n",
+			__LINE__, pkt->ip->saddr);
+	}
+
+	bpf_debug("[Transit:%d:] goose mac src: %x %x\n", 
+			__LINE__, sha[0], sha[1]);
+	bpf_debug("[Transit:%d:] goose mac src: %x %x\n", 
+			__LINE__, sha[2], sha[3]);
+	bpf_debug("[Transit:%d:] goose mac src: %x %x\n", 
+			__LINE__, sha[4], sha[5]);
+
+	bpf_debug("[Transit:%d:] goose xip src: %x dst: %x\n", 
+			__LINE__, *sip, *tip);
+
 	__be64 tunnel_id = trn_vni_to_tunnel_id(pkt->geneve->vni);
 
 	__builtin_memcpy(&epkey.tunip[0], &tunnel_id, sizeof(tunnel_id));
@@ -655,6 +779,13 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 	/* Respond to ARP */
 	pkt->inner_arp->ar_op = bpf_htons(ARPOP_REPLY);
 	trn_set_arp_ha(tha, sha);
+        
+	bpf_debug("[Transit:%d:] goose ep mac dst: %x %x\n", 
+			__LINE__, ep->mac[0], ep->mac[1]);
+	bpf_debug("[Transit:%d:] goose ep mac dst: %x %x\n", 
+			__LINE__, ep->mac[2], ep->mac[3]);
+	bpf_debug("[Transit:%d:] goose ep mac dst: %x %x\n", 
+			__LINE__, ep->mac[4], ep->mac[5]);
 	trn_set_arp_ha(sha, ep->mac);
 
 	__u32 tmp_ip = *sip;
@@ -872,7 +1003,7 @@ int _transit(struct xdp_md *ctx)
 
 	pkt.itf_ipv4 = itf->ip;
 	pkt.itf_idx = itf->iface_index;
-
+		
 	int action = trn_process_eth(&pkt);
 
 	/* The agent may tail-call this program, override XDP_TX to

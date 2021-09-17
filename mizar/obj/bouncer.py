@@ -165,11 +165,11 @@ class Bouncer(object):
     def update_vpc(self, dividers, add=True):
         for divider in dividers:
             if add:
-                logger.info("Divider added: {}".format(divider.name))
+                logger.info("Divider {} added to bouncer: {} ".format(divider.name, self.name))
                 self.dividers[divider.name] = divider
                 self.droplet_obj.update_substrate(divider)
             else:
-                logger.info("Divider removed: {}".format(divider.name))
+                logger.info("Divider removed from bouncer: {}".format(divider.name))
                 self.dividers[divider.name] = divider
                 self.droplet_obj.delete_substrate(divider)
         self.droplet_obj.update_vpc(self)

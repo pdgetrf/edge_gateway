@@ -92,16 +92,81 @@ class DropletOperator(object):
         droplets = set(self.store.get_all_droplets())
         if len(droplets) == 0:
             return False
-        d = random.sample(droplets, 1)[0]
+
+	# remove the gateway from the droplet set
+        gw_droplet = ""
+        for dd in droplets:
+            if dd.ip == '172.31.2.217':
+                gw_droplet = dd
+        droplets.remove(gw_droplet)
+        
+	# 172.31.15.238 is used only for pod in subnet 2
+        pod2_droplet = ""
+        for dd in droplets:
+            if dd.ip == '172.31.15.238':
+                pod2_droplet = dd
+        if pod2_droplet != "":
+                droplets.remove(pod2_droplet)
+        pod2_droplet = ""
+
+	# 172.31.7.100 is the master and has some issue running pod
+        for dd in droplets:
+            if dd.ip == '172.31.7.100':
+                pod2_droplet = dd
+        if pod2_droplet != "":
+                droplets.remove(pod2_droplet)
+
+        if bouncer.get_nip() == '192.168.122.0':
+	    # for external subnets, use the gateway host instead of picking a host as bouncer
+            d = gw_droplet
+            logger.info("external subnet, using gw droplet {}".format(d.ip))
+        else:
+            for dd in droplets:
+                logger.info("goose: elegible droplet for bouncer {} {}".format(dd.name, dd.ip))
+            d = random.sample(droplets, 1)[0]
+
+        logger.info("assign_bouncer_droplet in action: name={}, ip={}, mac={}, bouncer nip={}".format(d.name, d.ip, d.mac, bouncer.get_nip()))
         bouncer.set_droplet(d)
+
         return True
 
     def assign_divider_droplet(self, divider):
         droplets = set(self.store.get_all_droplets())
         if len(droplets) == 0:
             return False
+
+        gw_droplet = ""
+        for dd in droplets:
+            if dd.ip == '172.31.2.217':
+                gw_droplet = dd
+        if gw_droplet != "":
+            droplets.remove(gw_droplet)
+	
+        pod2_droplet = ""
+        for dd in droplets:
+            if dd.ip == '172.31.15.238':
+                pod2_droplet = dd
+        if pod2_droplet != "":
+                droplets.remove(pod2_droplet)
+        pod2_droplet = ""
+        for dd in droplets:
+            if dd.ip == '172.31.7.100':
+                pod2_droplet = dd
+        if pod2_droplet != "":
+                droplets.remove(pod2_droplet)
+
+        
+        if len(droplets) == 0:
+            logger.info("goose: unable to find any elegible droplet for divider {}".format(divider.name))
+            return False
+        
+        for dd in droplets:
+            logger.info("goose: elegible droplet for divider {} {}".format(dd.name, dd.ip))
+        
         d = random.sample(droplets, 1)[0]
         divider.set_droplet(d)
+
+        logger.info("assign_divider_droplet in action: name={}, ip={}, mac={}".format(d.name, d.ip, d.mac))
         return True
 
     def on_delete(self, body, spec, **kwargs):
