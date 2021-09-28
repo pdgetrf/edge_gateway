@@ -155,7 +155,7 @@ transit switch of that network, OW forward to the transit router. */
 	/* Rewrite RTS and update cache*/
 
 	if (net) {
-		if  (pkt->ip->saddr == 0xd9021fac) { //0xd9021fac --> gateway host (172.31.2.217) 
+		if  (pkt->ip->saddr == 0x000f1fac) { //0x000f1fac --> gateway host (172.31.15.0) 
  			// traffic from 
 			bpf_debug("--> goose skipped updating ep_host_cache from src %x\n", 
 				pkt->ip->saddr);
@@ -670,10 +670,10 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
         bpf_debug("[Transit:%d:] goose ip src: %x dst: %x\n", 
 			__LINE__, *sip, *tip);
 
-        if (*tip == 0x17aa8c0) {	// 0x17aa8c0 --> 192.168.122.1
+        if (*tip == 0x100a8c0) {	// 0x100a8c0 --> 192.168.0.1
 		bpf_debug("--> goose gw: src %x dst %x\n", 
 				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
-//		return XDP_PASS;	// send to user space (e.g. for tcpdump to catch)
+		return XDP_PASS;	// send to user space (e.g. for tcpdump to catch)
 	} else {
 
 		bpf_debug("--> goose none-gw: src %x dst %x\n", 
