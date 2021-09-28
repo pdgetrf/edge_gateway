@@ -97,7 +97,7 @@ workflows.
 13. The Endpoint Operator sees that the Bouncer status is now Provisioned.
 14. The Endpoint Operator updates all Endpoints with the new Bouncer (Note:
     There are currently no Endpoints)
-15. The Network Operator sees that the Bouncer is Provisioned.
+15. The Network OOperator sees that the Bouncer is Provisioned.
 16. The Network Operator updates the status of the Network Object to
     **Provisioned** and persists its state to the API Server.
 

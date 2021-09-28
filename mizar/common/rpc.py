@@ -101,7 +101,7 @@ class TrnRpc:
     def update_substrate_ep(self, ip, mac):
         jsonconf = self.get_substrate_ep_json(ip, mac)
         cmd = f'''{self.trn_cli_update_ep} \'{jsonconf}\''''
-        logger.info("update_substrate_ep: {}".format(cmd))
+        logger.info("545update_substrate_ep: {}".format(cmd))
         returncode, text = run_cmd(cmd)
         logger.info("returns {} {}".format(returncode, text))
 

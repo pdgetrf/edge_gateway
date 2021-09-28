@@ -71,8 +71,8 @@ static __inline int trn_rewrite_remote_mac(struct transit_packet *pkt)
 		return XDP_DROP;
 	}
 
-	trn_set_src_mac(pkt->data, pkt->eth->h_dest);
-	trn_set_dst_mac(pkt->data, remote_ep->mac);
+	trn_set_src_mac(pkt->data, pkt->eth->h_dest);	// dest mac address as source
+	trn_set_dst_mac(pkt->data, remote_ep->mac);	// previous dest ip's mac as
 
 	if (pkt->ip->tos & IPTOS_MINCOST) {
 		bpf_debug("[Transit:0x%x] Low priority pkt saddr:%x -> daddr:%x - XDP_PASS\n",
@@ -103,6 +103,9 @@ static __inline void trn_update_ep_host_cache(struct transit_packet *pkt,
 
 		if (!src_ep) {
 			/* Add the RTS info to the ep_host_cache */
+			/***
+			 Caching source endpoint info with host ip + mac
+			 */
 			bpf_map_update_elem(&ep_host_cache, &src_epkey,
 					    &pkt->rts_opt->rts_data.host, 0);
 		}
@@ -143,7 +146,7 @@ transit switch of that network, OW forward to the transit router. */
 	nkey.prefixlen = 96;
 	__builtin_memcpy(&nkey.nip[0], &tunnel_id, sizeof(tunnel_id));
 	nkey.nip[2] = inner_dst_ip;
-	net = bpf_map_lookup_elem(&networks_map, &nkey);
+		net = bpf_map_lookup_elem(&networks_map, &nkey);
 
 	/* Cache lookup for known ep */
 	struct remote_endpoint_t *dst_r_ep;
@@ -152,8 +155,15 @@ transit switch of that network, OW forward to the transit router. */
 	dst_epkey.tunip[2] = inner_dst_ip;
 	dst_r_ep = bpf_map_lookup_elem(&ep_host_cache, &dst_epkey);
 
-	/* Rewrite RTS and update cache*/
+	/***
+	 (net) means this is on a divider and "net" here is the bouncer of the target network
+	 Bouncer host does not have data in networks_map
+	 */
 	if (net) {
+		/* Rewrite RTS and update cache*/
+		/***
+		 * this is divider to remember the src host
+		 */
 		trn_update_ep_host_cache(pkt, tunnel_id, inner_src_ip);
 		pkt->rts_opt->rts_data.host.ip = pkt->ip->daddr;
 		__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
@@ -178,6 +188,13 @@ transit switch of that network, OW forward to the transit router. */
 		  nkey.nip[2]);
 
 	if (net) {
+		/***
+		 when (net), two possibilities
+		 1. This is the source endpoint
+		 2. This is on a divider
+		 either way, send pkt to net's bouncer
+	 	Note: Divider does not modify inner ips
+		 */
 		bpf_debug("[Transit::] LPM found [0x%x:0x%x:0x%x]!\n",
 			  net->nip[0], net->nip[1], net->nip[2]);
 
@@ -202,12 +219,19 @@ transit switch of that network, OW forward to the transit router. */
 		bpf_debug("[Transit:%d:] Sending packet to switch!\n",
 			  __LINE__);
 
-		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr,
+
+		/***
+		 Here a bouncer switches_ips[swidx] is picked as destination
+		 */
+		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr,	// notice here pkt->ip->daddr: src ip is set to from divider
 					net->switches_ips[swidx]);
 		return trn_rewrite_remote_mac(pkt);
 	}
 
-	/* Now forward the packet to the VPC router */
+	/***
+	 Bouncer: Now forward the packet to the divider
+	 Note: Bouncer does not modify inner ips
+	*/
 	struct vpc_key_t vpckey;
 	struct vpc_t *vpc;
 
@@ -223,7 +247,7 @@ transit switch of that network, OW forward to the transit router. */
 
 	__u32 routeridx =
 		jhash_2words(inner_src_ip, inner_dst_ip, INIT_JHASH_SEED) %
-		vpc->nrouters;
+		vpc->nrouters;	// list of dividers belonging to this VPC
 
 	if (routeridx > TRAN_MAX_NROUTER - 1) {
 		bpf_debug(
@@ -233,8 +257,17 @@ transit switch of that network, OW forward to the transit router. */
 	}
 
 	bpf_debug("[Transit:%d:] Sending packet to router!\n", __LINE__);
-	trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr,
+	/***
+	 this function name is confusing!
+	 it set src, dst, ip and checksum
+	 mainly here is to set the 3rd parameter as the dest ip
+	 */
+	trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr,		// notice here pkt->ip->daddr: src ip is set to from bouncer
 				vpc->routers_ips[routeridx]);
+	/***
+	 this fill in the dest mac (found in ep map) based on the dest ip
+	 Note: endpoint map has mapping from ip -> mac
+	 */
 	return trn_rewrite_remote_mac(pkt);
 }
 
@@ -263,6 +296,9 @@ static __inline int trn_switch_handle_pkt(struct transit_packet *pkt,
 	ep = bpf_map_lookup_elem(&endpoints_map, &epkey);
 
 	if (!ep) {
+		/***
+		 don't really care about scaled ep type at the moment
+		 */
 		/* If the scaled endpoint modify option is present,
 		   make TR route to the inner packet source */
 		if (pkt->scaled_ep_opt->type == TRN_GNV_SCALED_EP_OPT_TYPE &&
@@ -271,9 +307,18 @@ static __inline int trn_switch_handle_pkt(struct transit_packet *pkt,
 			return trn_router_handle_pkt(pkt, inner_dst_ip,
 						     inner_src_ip);
 
+		/***
+		 destination ep not found in the endpoint map, send to bouncer or divider
+		 in terms of ARP, this is where ARP request is forwarded (this came from line #676)
+		 here inner_src_ip is the one asking ARP, inner_dst_ip is what's being asked about
+		 */
 		return trn_router_handle_pkt(pkt, inner_src_ip, inner_dst_ip);
 	}
 
+	/***
+	 In terms of ARP, this is where ARP reply is sent back to the asking endpoint
+	 Why? because in this case, inner_dst_ip is the asking endpoint ip (line #754)
+	 */
 	/* The packet may be sent first to a gw mac address */
 	trn_set_dst_mac(pkt->inner_eth, ep->mac);
 
@@ -324,6 +369,7 @@ static __inline int trn_switch_handle_pkt(struct transit_packet *pkt,
 	}
 
 	trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, ep->remote_ips[0]);
+
 	bpf_debug("[Transit::0x%x] TX: {src=0x%x, dst=0x%x}/\n",
 		  bpf_ntohl(pkt->itf_ipv4), bpf_ntohl(pkt->ip->saddr),
 		  bpf_ntohl(pkt->ip->daddr));
@@ -414,7 +460,7 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
 
 	/* For whatever compiler reason, we need to perform reverse flow modification
 	 in this function instead of trn_switch_handle_pkt so we keep the orig_src_ip */
-	__u32 orig_src_ip = pkt->inner_ip->saddr;
+	__u32 orig_inner_src_ip = pkt->inner_ip->saddr;
 
 	pkt->inner_ipv4_tuple.saddr = pkt->inner_ip->saddr;
 	pkt->inner_ipv4_tuple.daddr = pkt->inner_ip->daddr;
@@ -453,6 +499,11 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
 
 	__be64 tunnel_id = trn_vni_to_tunnel_id(pkt->geneve->vni);
 
+	/***
+	 * this block seems to be checking whether traffic is allowed from pod
+	 * don't see relevant to edge application and I'm too tired to deal with it.
+	 * sometime later.
+	 */
 	if (pkt->inner_ipv4_tuple.protocol == IPPROTO_TCP || pkt->inner_ipv4_tuple.protocol == IPPROTO_UDP) {
 		__u8 *tracked_state = get_originated_conn_state(&conn_track_cache, tunnel_id, &pkt->inner_ipv4_tuple);
 		// todo: only check for bi-directional connections
@@ -544,12 +595,12 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
 	}
 
 	/* Check if we need to apply a reverse flow update */
-	struct ipv4_tuple_t inner;
+	struct ipv4_tuple_t inner_ipv4_tuple;
 	struct scaled_endpoint_remote_t *inner_mod;
-	__builtin_memcpy(&inner, &pkt->inner_ipv4_tuple,
+	__builtin_memcpy(&inner_ipv4_tuple, &pkt->inner_ipv4_tuple,
 			 sizeof(struct ipv4_tuple_t));
 
-	inner_mod = bpf_map_lookup_elem(&rev_flow_mod_cache, &inner);
+	inner_mod = bpf_map_lookup_elem(&rev_flow_mod_cache, &inner_ipv4_tuple);
 	if (inner_mod) {
 		/* Modify the inner packet accordingly */
 		trn_set_src_dst_port(pkt, inner_mod->sport, inner_mod->dport);
@@ -559,17 +610,17 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
 	}
 
 	return trn_switch_handle_pkt(pkt, pkt->inner_ip->saddr,
-				     pkt->inner_ip->daddr, orig_src_ip);
+				     pkt->inner_ip->daddr, orig_inner_src_ip);
 }
 
 static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 {
-	unsigned char *sha;
-	unsigned char *tha = NULL;
+	unsigned char *p_inner_arp_src_mac;
+	unsigned char *p_inner_arp_dst_mac = NULL;
 	struct endpoint_t *ep;
 	struct endpoint_key_t epkey;
 	struct endpoint_t *remote_ep;
-	__u32 *sip, *tip;
+	__u32 *p_inner_arp_src_ip, *p_inner_arp_dst_ip;
 	__u64 csum = 0;
 
 	pkt->inner_arp = (void *)pkt->inner_eth + sizeof(*pkt->inner_eth);
@@ -595,7 +646,6 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 			"Only ARP REPLY and REQUEST are supported, received [0x%x]\n",
 			pkt->inner_arp->ar_op);
 		return XDP_DROP;
-	}
 
 	if ((unsigned char *)(pkt->inner_arp + 1) > pkt->data_end) {
 		bpf_debug("[Transit:%d:0x%x] ABORTED: Bad offset\n", __LINE__,
@@ -603,65 +653,107 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 		return XDP_ABORTED;
 	}
 
-	sha = (unsigned char *)(pkt->inner_arp + 1);
+	/***
+	 refer to http://www.cs.newpaltz.edu/~easwaran/CCN/Week13/ARP.pdf for ARP request format
+	 */
 
-	if (sha + ETH_ALEN > pkt->data_end) {
+	/*** ARP request:
+	 What is the mac address (dst_mac) of dst_ip?
+	 */
+	p_inner_arp_src_mac = (unsigned char *)(pkt->inner_arp + 1);
+
+	// ETH_ALEN: length of ETH ADDRESS (MAC ADDRESS), 48 bits or 6 bytes. Alen!!
+	if (p_inner_arp_src_mac + ETH_ALEN > pkt->data_end) {
 		bpf_debug("[Transit:%d:0x%x] ABORTED: Bad offset\n", __LINE__,
 			  bpf_ntohl(pkt->itf_ipv4));
 		return XDP_ABORTED;
 	}
 
-	sip = (__u32 *)(sha + ETH_ALEN);
+	p_inner_arp_src_ip = (__u32 *)(p_inner_arp_src_mac + ETH_ALEN); 	// source inner protocol(ip) address
 
-	if (sip + 1 > pkt->data_end) {
+	if (p_inner_arp_src_ip + 1 > pkt->data_end) {
 		bpf_debug("[Transit:%d:0x%x] ABORTED: Bad offset\n", __LINE__,
 			  bpf_ntohl(pkt->itf_ipv4));
 		return XDP_ABORTED;
 	}
 
-	tha = (unsigned char *)sip + sizeof(__u32);
+	p_inner_arp_dst_mac = (unsigned char *)p_inner_arp_src_ip + sizeof(__u32);// destination inner protocol(ip) address
 
-	if (tha + ETH_ALEN > pkt->data_end) {
+	if (p_inner_arp_dst_mac + ETH_ALEN > pkt->data_end) {
 		bpf_debug("[Transit:%d:0x%x] ABORTED: Bad offset\n", __LINE__,
 			  bpf_ntohl(pkt->itf_ipv4));
 		return XDP_ABORTED;
 	}
 
-	tip = (__u32 *)(tha + ETH_ALEN);
+	p_inner_arp_dst_ip = (__u32 *)(p_inner_arp_dst_mac + ETH_ALEN);
 
-	if ((void *)tip + sizeof(__u32) > pkt->data_end) {
+	if ((void *)p_inner_arp_dst_ip + sizeof(__u32) > pkt->data_end) {
 		bpf_debug("[Transit:%d:0x%x] ABORTED: Bad offset\n", __LINE__,
 			  bpf_ntohl(pkt->itf_ipv4));
 		return XDP_ABORTED;
 	}
 
+	/***
+	 find the mac address of dst_ip in VPC vni from endpoints_map map
+	 this means this is a bouncer (to confirm)
+	*/
 	__be64 tunnel_id = trn_vni_to_tunnel_id(pkt->geneve->vni);
-
 	__builtin_memcpy(&epkey.tunip[0], &tunnel_id, sizeof(tunnel_id));
-	epkey.tunip[2] = *tip;
+	epkey.tunip[2] = *p_inner_arp_dst_ip;
 	ep = bpf_map_lookup_elem(&endpoints_map, &epkey);
 
 	/* Don't respond to arp if endpoint is not found, or it is local to host */
-	if (!ep || ep->hosted_iface != -1 ||
+	/***
+	 bouncer has the ep info in its subnet in the endpoints_map
+	 */
+	if (!ep || ep->hosted_iface != -1 ||	/*** hosted_iface != -1 means ep is on the host */
 	    pkt->inner_arp->ar_op != bpf_htons(ARPOP_REQUEST)) {
 		bpf_debug("[Transit:%d:0x%x] Bypass ARP handling\n", __LINE__,
 			  bpf_ntohl(pkt->itf_ipv4));
-		return trn_switch_handle_pkt(pkt, *sip, *tip, *sip);
+		/***
+		 Here p_inner_arp_src_ip is the src ep asking ARP,
+		 and p_inner_arp_dst_ip is what's being asked about
+
+		 If ep is not found, it means the target ep is in another subnet (or invalid).
+		 Two possiblities:
+		 1. This is on a bouncer, and let's send up to divider
+		 1. This is on a divider, and let's send up to a bouncer
+		 */
+		return trn_switch_handle_pkt(pkt, *p_inner_arp_src_ip, *, *p_inner_arp_src_ip);
 	}
 
 	bpf_debug("[Transit:%d:0x%x] respond to ARP\n", __LINE__,
 		  bpf_ntohl(pkt->itf_ipv4));
 
+	/***
+	Bouncer responding to ARP
+	 */
 	/* Respond to ARP */
-	pkt->inner_arp->ar_op = bpf_htons(ARPOP_REPLY);
-	trn_set_arp_ha(tha, sha);
-	trn_set_arp_ha(sha, ep->mac);
 
-	__u32 tmp_ip = *sip;
-	*sip = *tip;
-	*tip = tmp_ip;
+	/***
+	 * ARP Response step #1: MAC
+	 * SRC to be from the answer MAC
+	 * DST to be the asking ep (the one initiated the ARP request)
+	 */
+	pkt->inner_arp->ar_op = bpf_htons(ARPOP_REPLY);
+	trn_set_arp_ha(p_inner_arp_dst_mac, p_inner_arp_src_mac);	/*** reply to the asking pod at src_mac */
+	trn_set_arp_ha(p_inner_arp_src_mac, ep->mac);	// reply is "dst_ip has mac ep->mac"
+
+	/***
+	 * ARP Response step #2: IP
+	 * SRC to be from the answering IP
+	 * DST to be the asking ep (the one initiated the ARP request)
+	 * Here it simply swaps p_inner_arp_src_ip and p_inner_arp_src_ip
+	 */
+	// swap inner src and dst ips
+	__u32 tmp_ip = *p_inner_arp_src_ip;
+	*p_inner_arp_src_ip = *p_inner_arp_dst_ip;
+	*p_inner_arp_dst_ip = tmp_ip;
 
 	/* Set the sender mac address to the ep mac address */
+	/***
+	 Bouncer "pretending" to answer the ARP as the DST endpoint
+	 */
 	trn_set_src_mac(pkt->inner_eth, ep->mac);
 
 	if (ep->eptype == TRAN_SIMPLE_EP) {
@@ -675,11 +767,14 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 			bpf_debug(
 				"[Transit:%d:] (BUG) DROP: "
 				"Failed to find remote MAC address of ep: 0x%x @ 0x%x\n",
-				__LINE__, bpf_ntohl(*tip),
+				__LINE__, bpf_ntohl(*p_inner_arp_dst_ip),
 				bpf_ntohl(ep->remote_ips[0]));
 			return XDP_DROP;
 		}
 
+		/***
+		 Bouncer records that target endpoint ip and mac in RTS option
+		 */
 		/* For a simple endpoint, Write the RTS option on behalf of the target endpoint */
 		pkt->rts_opt->rts_data.host.ip = ep->remote_ips[0];
 		__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
@@ -691,10 +786,18 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 	}
 
 	/* We need to lookup the endpoint again, since tip has changed */
-	epkey.tunip[2] = *tip;
-	ep = bpf_map_lookup_elem(&endpoints_map, &epkey);
+	/***
+	 p_inner_arp_dst_ip now has the asking endpoint (the one who started ARP request) ip
+	 however, where is the following lookup result used?
+	 */
+	epkey.tunip[2] = *p_inner_arp_dst_ip;
+	ep = bpf_map_lookup_elem(&endpoints_map, &epkey);	// where is this used?
 
-	return trn_switch_handle_pkt(pkt, *sip, *tip, *sip);
+	/***
+	 Off actually send the ARP reply
+	 Here p_inner_arp_src_ip is the one being asked about, p_inner_arp_dst_ip is the one initiated the ARP
+	 */
+	return trn_switch_handle_pkt(pkt, *p_inner_arp_src_ip, *p_inner_arp_dst_ip, *p_inner_arp_src_ip);
 }
 
 static __inline int trn_process_inner_eth(struct transit_packet *pkt)
@@ -708,13 +811,22 @@ static __inline int trn_process_inner_eth(struct transit_packet *pkt)
 		return XDP_ABORTED;
 	}
 
-	/* ARP */
+	/***
+	 here we go :)
+	 */
+
+	/***
+	 ARP
+	 */
 	if (pkt->inner_eth->h_proto == bpf_htons(ETH_P_ARP)) {
 		bpf_debug("[Transit:%d:0x%x] Processing ARP \n", __LINE__,
 			  bpf_ntohl(pkt->itf_ipv4));
 		return trn_process_inner_arp(pkt);
 	}
 
+	/***
+	 * IP
+	 */
 	if (pkt->eth->h_proto != bpf_htons(ETH_P_IP)) {
 		bpf_debug(
 			"[Transit:%d:0x%x] DROP: unsupported inner packet: [0x%x]\n",
@@ -731,6 +843,7 @@ static __inline int trn_process_inner_eth(struct transit_packet *pkt)
 static __inline int trn_process_geneve(struct transit_packet *pkt)
 {
 	pkt->geneve = (void *)pkt->udp + sizeof(*pkt->udp);
+
 	if (pkt->geneve + 1 > pkt->data_end) {
 		bpf_debug("[Transit:%d:0x%x] ABORTED: Bad offset\n", __LINE__,
 			  bpf_ntohl(pkt->itf_ipv4));
@@ -835,6 +948,9 @@ static __inline int trn_process_ip(struct transit_packet *pkt)
 
 static __inline int trn_process_eth(struct transit_packet *pkt)
 {
+	/***
+	 this function only extracts and fill in data in pkt struct
+	 */
 	pkt->eth = pkt->data;
 	pkt->eth_off = sizeof(*pkt->eth);
 
@@ -858,6 +974,17 @@ int _transit(struct xdp_md *ctx)
 	pkt.data = (void *)(long)ctx->data;
 	pkt.data_end = (void *)(long)ctx->data_end;
 	pkt.xdp = ctx;
+
+	/****
+	 * trying to find info from the agent
+	 ***/
+	int key = 0;
+	pkt.agent_md = bpf_map_lookup_elem(&agentmetadata_map, &key);
+	if (!pkt.agent_md) {
+		bpf_debug("DROP (BUG): Agent metadata is missing\n");
+		return XDP_DROP;
+	}
+	bpf_debug("[Agent: goose ip %x]\n", pkt.agent_md->epkey.tunip[2]);
 
 	struct tunnel_iface_t *itf;
 

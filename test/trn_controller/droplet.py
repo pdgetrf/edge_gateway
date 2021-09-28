@@ -337,8 +337,7 @@ ip netns del {ep.ns} \' ''')
             "nip": net.get_nip(),
             "prefixlen": net.get_prefixlen(),
         }
-        self.rpc_updates[("net " + self.phy_itf,
-                          json.dumps(jsonkey))] = time.time()
+        self.rpc_updates[("net " + self.phy_itf, json.dumps(jsonkey))] = time.time()
         cmd = f'''{self.trn_cli_update_net} \'{jsonconf}\''''
         self.exec_cli_rpc(log_string, cmd, expect_fail)
 

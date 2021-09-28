@@ -167,7 +167,7 @@ class Bouncer(object):
             if add:
                 logger.info("Divider added: {}".format(divider.name))
                 self.dividers[divider.name] = divider
-                self.droplet_obj.update_substrate(divider)
+                self.droplet_obj.update_substrate(divider)  # add divider's ip and mac
             else:
                 logger.info("Divider removed: {}".format(divider.name))
                 self.dividers[divider.name] = divider

@@ -57,6 +57,10 @@ class BouncerCreate(WorkflowTask):
         if not net:
             self.raise_temporary_error(
                 "Task: {} Bouncer: {} Net {} not ready.".format(self.__class__.__name__, bouncer.name, bouncer.net))
+
+        #
+        # place bouncer on a host
+        #
         if not droplets_opr.assign_bouncer_droplet(bouncer):
             self.raise_temporary_error("Task: {} Bouncer: {} No droplets available.".format(
                 self.__class__.__name__, bouncer.name))
@@ -65,12 +69,13 @@ class BouncerCreate(WorkflowTask):
         # Update vpc on bouncer
         # Needs a list of all dividers
         bouncer.set_vni(vpcs_opr.store.get_vpc(bouncer.vpc).vni)
-        dividers_opr.update_vpc(bouncer)
+        dividers_opr.update_vpc(bouncer)  # add divider to the new bouncer
+                                          # routers_ips[...]
 
         # Update net on dividers
-
         net.bouncers[bouncer.name] = bouncer
-        dividers_opr.update_divider_with_bouncers(bouncer, net)
+        dividers_opr.update_divider_with_gateway()
+        dividers_opr.update_divider_with_bouncers(bouncer, net)  # add new bouncer to all divider
         endpoints_opr.update_bouncer_with_endpoints(bouncer, self)
         endpoints_opr.update_endpoints_with_bouncers(bouncer, self)
         bouncer.load_transit_xdp_pipeline_stage()

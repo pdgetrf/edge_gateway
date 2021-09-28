@@ -52,13 +52,13 @@ int _version SEC("version") = 1;
 
 static __inline int trn_select_transit_switch(struct transit_packet *pkt,
 					      struct agent_metadata_t *metadata,
-					      __be64 tun_id, __u32 in_src_ip,
-					      __u32 in_dst_ip, __u16 *s_port,
+					      __be64 tun_id, __u32 inner_src_ip,
+					      __u32 inner_dst_ip, __u16 *s_port,
 					      __u32 *d_addr)
 {
 	/* Compute the source port and the transit switch address based on a hash
    * of the inner ip */
-	__u32 inhash = jhash_2words(in_src_ip, in_dst_ip, INIT_JHASH_SEED);
+	__u32 inhash = jhash_2words(inner_src_ip, inner_dst_ip, INIT_JHASH_SEED);
 	*s_port = SPORT_MIN + (inhash % SPORT_BASE);
 
 	if (*s_port < SPORT_MIN || *s_port > SPORT_MAX) {
@@ -72,6 +72,10 @@ static __inline int trn_select_transit_switch(struct transit_packet *pkt,
 		return 1;
 	}
 
+	/*
+	 * find the bouncer in metadata.net which has subnet into stored in network_t
+	 * network_t is also the "value" in the network map
+	 */
 	__u32 sw_idx = inhash % metadata->net.nswitches;
 
 	if (sw_idx > TRAN_MAX_NSWITCH - 1) {
@@ -87,8 +91,8 @@ static __inline int trn_select_transit_switch(struct transit_packet *pkt,
 
 static __inline int trn_encapsulate(struct transit_packet *pkt,
 				    struct agent_metadata_t *metadata,
-				    __be64 tun_id, __u32 in_src_ip,
-				    __u32 in_dst_ip)
+				    __be64 tun_id, __u32 inner_src_ip,
+				    __u32 inner_dst_ip)
 {
 	struct remote_endpoint_t *dst_r_ep;
 	struct endpoint_t *r_ep;
@@ -112,26 +116,38 @@ static __inline int trn_encapsulate(struct transit_packet *pkt,
 	}
 
 	__builtin_memcpy(&dst_epkey.tunip[0], &tun_id, sizeof(tun_id));
-	dst_epkey.tunip[2] = in_dst_ip;
+	dst_epkey.tunip[2] = inner_dst_ip;
 
 	dst_r_ep = bpf_map_lookup_elem(ep_host_cache, &dst_epkey);
 
+	/*
+	 the following tries to set d_addr and d_mac
+	 if ep_host_cache has it, then send it directly
+	 otherwise find a bouncer and send it over
+	 */
 	if (dst_r_ep) {
+		/***
+		 direct path to the target host
+		 ***/
 		d_addr = dst_r_ep->ip;
 		d_mac = dst_r_ep->mac;
 
 		bpf_debug(
 			"[Agent:%ld.0x%x] Host of 0x%x, found sending directly!\n",
 			pkt->agent_ep_tunid, bpf_ntohl(pkt->agent_ep_ipv4),
-			bpf_ntohl(in_dst_ip));
+			bpf_ntohl(inner_dst_ip));
 
-	} else if (!trn_select_transit_switch(pkt, metadata, tun_id, in_src_ip,
-					      in_dst_ip, &s_port, &d_addr)) {
+	} else if (!trn_select_transit_switch(pkt, metadata, tun_id, inner_src_ip,
+					      inner_dst_ip, &s_port, &d_addr)) {
+		/***
+		 find a bouncer and send pkt
+		 bouncer ip is in d_addr
+		 ***/
 		/* Get the endpoint of the transit switch for outer dst mac */
 		bpf_debug(
 			"[Agent:%ld.0x%x] Sending dst 0x%x, to transit switch!\n",
 			pkt->agent_ep_tunid, bpf_ntohl(pkt->agent_ep_ipv4),
-			bpf_ntohl(in_dst_ip));
+			bpf_ntohl(inner_dst_ip));
 		r_epkey.tunip[0] = 0;
 		r_epkey.tunip[1] = 0;
 		r_epkey.tunip[2] = d_addr;
@@ -145,6 +161,9 @@ static __inline int trn_encapsulate(struct transit_packet *pkt,
 			return XDP_DROP;
 		}
 
+		/***
+		 bouncer MAC is in d_mac
+		 */
 		d_mac = r_ep->mac;
 
 	} else {
@@ -221,6 +240,9 @@ static __inline int trn_encapsulate(struct transit_packet *pkt,
 	/* Populate the outer header fields */
 	pkt->eth->h_proto = bpf_htons(ETH_P_IP);
 
+	/***
+	 set outer src and dst MAC
+	 */
 	trn_set_dst_mac(pkt->data, d_mac);
 	trn_set_src_mac(pkt->data, metadata->eth.mac);
 
@@ -311,9 +333,13 @@ static __inline int trn_encapsulate(struct transit_packet *pkt,
 		  pkt->agent_ep_tunid, bpf_ntohl(pkt->agent_ep_ipv4),
 		  bpf_htonl(pkt->ip->daddr));
 
-	return bpf_redirect_map(&interfaces_map, 0, 0);
+	return (&interfaces_map, 0, 0);
 }
 
+/***
+ * why this function at all?
+ * just call trn_encapsulate directly. pkt has everything in it.
+ */
 static __inline int trn_redirect(struct transit_packet *pkt, __u32 inner_src_ip,
 				 __u32 inner_dst_ip)
 {
@@ -381,6 +407,11 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
 		pkt->inner_ipv4_tuple.dport = pkt->inner_udp->dest;
 	}
 
+	/***
+	 * this block seems to be checking whether traffic is allowed from pod
+	 * don't see relevant to edge application and I'm too tired to deal with it.
+	 * sometime later.
+	 */
 	if (pkt->inner_ipv4_tuple.protocol == IPPROTO_TCP || pkt->inner_ipv4_tuple.protocol == IPPROTO_UDP) {
 		__u8 *tracked_state = get_originated_conn_state(&conn_track_cache, pkt->agent_ep_tunid, &pkt->inner_ipv4_tuple);
 		// todo: only check for bi-directional connections
@@ -438,10 +469,10 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
 
 static __inline int trn_process_arp(struct transit_packet *pkt)
 {
-	unsigned char *sha;
-	unsigned char *tha = NULL;
-	__u32 *sip;
-	__u32 *tip;
+	unsigned char *p_inner_arp_src_mac;
+	unsigned char *p_inner_arp_dst_mac = NULL;
+	__u32 *p_inner_arp_src_ip;
+	__u32 *p_inner_arp_dst_ip;
 
 	pkt->inner_arp = (void *)pkt->inner_eth + sizeof(*pkt->inner_eth);
 
@@ -476,43 +507,43 @@ static __inline int trn_process_arp(struct transit_packet *pkt)
 		return XDP_ABORTED;
 	}
 
-	sha = (unsigned char *)(pkt->inner_arp + 1);
+	p_inner_arp_src_mac = (unsigned char *)(pkt->inner_arp + 1);
 
-	if (sha + ETH_ALEN > pkt->data_end) {
+	if (p_inner_arp_src_mac + ETH_ALEN > pkt->data_end) {
 		bpf_debug("[Agent:%ld.0x%x] ABORTED: Bad offset [%d]\n",
 			  pkt->agent_ep_tunid, bpf_ntohl(pkt->agent_ep_ipv4),
 			  __LINE__);
 		return XDP_ABORTED;
 	}
 
-	sip = (__u32 *)(sha + ETH_ALEN);
+	p_inner_arp_src_ip = (__u32 *)(p_inner_arp_src_mac + ETH_ALEN);
 
-	if (sip + 1 > pkt->data_end) {
+	if (p_inner_arp_src_ip + 1 > pkt->data_end) {
 		bpf_debug("[Agent:%ld.0x%x] ABORTED: Bad offset [%d]\n",
 			  pkt->agent_ep_tunid, bpf_ntohl(pkt->agent_ep_ipv4),
 			  __LINE__);
 		return XDP_ABORTED;
 	}
 
-	tha = (unsigned char *)sip + sizeof(__u32);
+	p_inner_arp_dst_mac = (unsigned char *)p_inner_arp_src_ip + sizeof(__u32);
 
-	if (tha + ETH_ALEN > pkt->data_end) {
+	if (p_inner_arp_dst_mac + ETH_ALEN > pkt->data_end) {
 		bpf_debug("[Agent:%ld.0x%x] ABORTED: Bad offset [%d]\n",
 			  pkt->agent_ep_tunid, bpf_ntohl(pkt->agent_ep_ipv4),
 			  __LINE__);
 		return XDP_ABORTED;
 	}
 
-	tip = (__u32 *)(tha + ETH_ALEN);
+	p_inner_arp_dst_ip = (__u32 *)(p_inner_arp_dst_mac + ETH_ALEN);
 
-	if ((void *)tip + sizeof(__u32) > pkt->data_end) {
+	if ((void *)p_inner_arp_dst_ip + sizeof(__u32) > pkt->data_end) {
 		bpf_debug("[Agent:%ld.0x%x] ABORTED: Bad offset [%d]\n",
 			  pkt->agent_ep_tunid, bpf_ntohl(pkt->agent_ep_ipv4),
 			  __LINE__);
 		return XDP_ABORTED;
 	}
 
-	return trn_redirect(pkt, *sip, *tip);
+	return trn_redirect(pkt, *p_inner_arp_src_ip, *p_inner_arp_dst_ip);
 }
 
 static __inline int trn_process_inner_eth(struct transit_packet *pkt)
@@ -572,6 +603,9 @@ int _agent(struct xdp_md *ctx)
 	bpf_debug("[Agent:%ld.0x%x]\n", pkt.agent_ep_tunid,
 		  bpf_ntohl(pkt.agent_ep_ipv4));
 
+	/***
+	 Adventure starts from here
+	 */
 	int action = trn_process_inner_eth(&pkt);
 
 	if (action == XDP_PASS)

@@ -121,7 +121,7 @@ class Divider(object):
                     logger.info("Bouncer {} added for Net {}".format(
                         bouncer.name, net.name))
                     self.bouncers[bouncer.name] = bouncer
-                    self.droplet_obj.update_substrate(bouncer)
+                    self.droplet_obj.update_substrate(bouncer)  # add bouncer ip and mac to the divider host
             else:
                 if bouncer.name in self.bouncers.keys():
                     logger.info("Bouncer {} removed from Net {}".format(

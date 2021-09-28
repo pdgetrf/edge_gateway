@@ -286,10 +286,10 @@ static inline void trn_set_dst_mac(void *data, unsigned char *dst_mac)
 __ALWAYS_INLINE__
 static inline void trn_set_src_mac(void *data, unsigned char *src_mac)
 {
-	unsigned short *p = data;
+	unsigned short *p = data;	// 16 bit
 	unsigned short *src = (unsigned short *)src_mac;
 
-	p[3] = src[0];
+	p[3] = src[0];	// starting from 49th bit for 48-bit of mac
 	p[4] = src[1];
 	p[5] = src[2];
 }

@@ -93,6 +93,7 @@ class DropletOperator(object):
         if len(droplets) == 0:
             return False
         d = random.sample(droplets, 1)[0]
+
         bouncer.set_droplet(d)
         return True
 

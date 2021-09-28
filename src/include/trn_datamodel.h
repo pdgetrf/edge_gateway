@@ -95,7 +95,7 @@ struct network_key_t {
 	__u32 nip[3];
 } __attribute__((packed));
 
-struct network_t {
+struct network_t
 	__u32 prefixlen; /* up to 32 for AF_INET, 128 for AF_INET6 */
 	__u32 nip[3];
 	__u32 nswitches;
