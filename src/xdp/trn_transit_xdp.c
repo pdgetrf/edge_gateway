@@ -70,6 +70,11 @@ static __inline int trn_rewrite_remote_mac(struct transit_packet *pkt)
 			  __LINE__);
 		return XDP_DROP;
 	}
+		
+	if  (pkt->ip->daddr == 0xd9021fac) {
+		bpf_debug("--> goose mac: dst mac %x\n", 
+				remote_ep->mac);
+	}
 
 	trn_set_src_mac(pkt->data, pkt->eth->h_dest);
 	trn_set_dst_mac(pkt->data, remote_ep->mac);
@@ -208,8 +213,8 @@ transit switch of that network, OW forward to the transit router. */
 			return XDP_DROP;
 		}
 
-		bpf_debug("[Transit:%d:] Sending packet to switch!\n",
-			  __LINE__);
+		bpf_debug("[Transit:%d:] Sending packet to switch %x!\n",
+			  __LINE__, net->switches_ips[swidx]);
 
 		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr,
 					net->switches_ips[swidx]);
@@ -218,13 +223,6 @@ transit switch of that network, OW forward to the transit router. */
 
 	bpf_debug("[Transit:%d:] goose1 src: %x dst: %x\n", 
 		__LINE__, inner_src_ip, inner_dst_ip);
-/*
-        if (inner_dst_ip==0x6f6fa8c0) {
-		bpf_debug("[Transit:%d:] goose2 %x\n", __LINE__, inner_dst_ip);
-		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, 0xde0e1fac);
-		return trn_rewrite_remote_mac(pkt);
-	}
-*/
 
 	/* Now forward the packet to the VPC router */
 	struct vpc_key_t vpckey;
@@ -659,23 +657,33 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 
 
 	if (pkt->inner_arp->ar_op == bpf_htons(ARPOP_REPLY)) {
-		bpf_debug("[Transit:%d:] goose ARPOP_REPLY\n"); 
+		bpf_debug("[Transit:%d:] goose ARPOP_REPLY\n", __LINE__); 
 	} else {
-		bpf_debug("[Transit:%d:] goose ARPOP_REQUEST\n"); 
+		bpf_debug("[Transit:%d:] goose ARPOP_REQUEST\n", __LINE__); 
 	}
+
         bpf_debug("[Transit:%d:] goose mac src: %x dst: %x\n", 
 			__LINE__, *sha, *tha);
-		
-	
-        bpf_debug("[Transit:%d:] goose ip src: %x dst: %x\n", 
+        bpf_debug("[Transit:%d:] goose xip src: %x dst: %x\n", 
 			__LINE__, *sip, *tip);
 
         if (*tip == 0x17aa8c0) {	// 0x17aa8c0 --> 192.168.122.1
-		bpf_debug("--> goose gw: src %x dst %x\n", 
+		bpf_debug("--> goose xgw: src %x dst %x\n", 
 				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
-//		return XDP_PASS;	// send to user space (e.g. for tcpdump to catch)
-	} else {
+		/*
+		* gateway function 
+		*/
+		// option 1: return XDP_PASS;	// send to user space (e.g. for tcpdump to catch)
 
+		// option 2: send to the other gateway
+		/*
+		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, 0xf1fac);	// 0xf1fac -> 172.31.15.0
+		trn_set_src_mac(pkt->data, pkt->eth->h_dest);
+		trn_set_dst_mac(pkt->data, );
+		return XDP_TX;
+*/
+
+	} else {
 		bpf_debug("--> goose none-gw: src %x dst %x\n", 
 				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
 	}
