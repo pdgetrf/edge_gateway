@@ -670,10 +670,14 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
         bpf_debug("[Transit:%d:] goose ip src: %x dst: %x\n", 
 			__LINE__, *sip, *tip);
 
+	if  (pkt->ip->saddr == 0xd9021fac) { //0xd9021fac --> left gateway host (172.31.2.217)
+		bpf_debug("--> goose roger %x\n");
+	}
+
         if (*tip == 0x100a8c0) {	// 0x100a8c0 --> 192.168.0.1
 		bpf_debug("--> goose gw: src %x dst %x\n", 
 				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
-		return XDP_PASS;	// send to user space (e.g. for tcpdump to catch)
+		//return XDP_PASS;	// send to user space (e.g. for tcpdump to catch)
 	} else {
 
 		bpf_debug("--> goose none-gw: src %x dst %x\n", 
