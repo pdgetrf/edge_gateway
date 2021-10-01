@@ -72,8 +72,14 @@ static __inline int trn_rewrite_remote_mac(struct transit_packet *pkt)
 	}
 		
 	if  (pkt->ip->daddr == 0xd9021fac) {
-		bpf_debug("--> goose mac: dst mac %x\n", 
-				remote_ep->mac);
+		bpf_debug("--> goose --- : dst mac %x:%x:%x\n",
+				remote_ep->mac[0], 
+				remote_ep->mac[1],
+				remote_ep->mac[2]);
+		bpf_debug("--> goose ---: dst mac %x:%x:%x\n",
+				remote_ep->mac[3],
+				remote_ep->mac[4],
+				remote_ep->mac[5]);
 	}
 
 	trn_set_src_mac(pkt->data, pkt->eth->h_dest);
@@ -676,13 +682,18 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 		// option 1: return XDP_PASS;	// send to user space (e.g. for tcpdump to catch)
 
 		// option 2: send to the other gateway
-		/*
 		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, 0xf1fac);	// 0xf1fac -> 172.31.15.0
 		trn_set_src_mac(pkt->data, pkt->eth->h_dest);
-		trn_set_dst_mac(pkt->data, );
+		unsigned char dst_mac[6]; // remote gw mac: 0a:b4:73:14:b9:91
+		dst_mac[0]=0xa;
+		dst_mac[1]=0xb4;
+		dst_mac[2]=0x73;
+		dst_mac[3]=0x14;
+		dst_mac[4]=0xb9;
+		dst_mac[5]=0x91;
+		trn_set_dst_mac(pkt->data, dst_mac);
+		bpf_debug("--> goose shipping to right-gw:\n");
 		return XDP_TX;
-*/
-
 	} else {
 		bpf_debug("--> goose none-gw: src %x dst %x\n", 
 				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
