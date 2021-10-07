@@ -164,9 +164,8 @@ transit switch of that network, OW forward to the transit router. */
 	dst_r_ep = bpf_map_lookup_elem(&ep_host_cache, &dst_epkey);
 
 	/* Rewrite RTS and update cache*/
-
 	if (net) {
-		if  (pkt->ip->saddr == 0xd9021fac) { //0xd9021fac --> gateway host (172.31.2.217) 
+		if  (pkt->ip->saddr == 0xd9021fac) { //0xd9021fac --> left gateway host (172.31.2.217)
  			// traffic from 
 			bpf_debug("--> goose skipped updating ep_host_cache from src %x\n", 
 				pkt->ip->saddr);
@@ -673,32 +672,67 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
         bpf_debug("[Transit:%d:] goose xip src: %x dst: %x\n", 
 			__LINE__, *sip, *tip);
 
-        if (*tip == 0x17aa8c0) {	// 0x17aa8c0 --> 192.168.122.1
-		bpf_debug("--> goose xgw: src %x dst %x\n", 
+	if (*tip != 0x17aa8c && *tip != 0x100a8c00) {
+		bpf_debug("--> goose none-gw: src %x dst %x\n",
 				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
-		/*
-		* gateway function 
-		*/
-		// option 1: return XDP_PASS;	// send to user space (e.g. for tcpdump to catch)
-
-		// option 2: send to the other gateway
-		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, 0xf1fac);	// 0xf1fac -> 172.31.15.0
-		trn_set_src_mac(pkt->data, pkt->eth->h_dest);
-		unsigned char dst_mac[6]; // remote gw mac: 0a:b4:73:14:b9:91
-		dst_mac[0]=0xa;
-		dst_mac[1]=0xb4;
-		dst_mac[2]=0x73;
-		dst_mac[3]=0x14;
-		dst_mac[4]=0xb9;
-		dst_mac[5]=0x91;
-		trn_set_dst_mac(pkt->data, dst_mac);
-		bpf_debug("--> goose shipping to right-gw:\n");
-		return XDP_TX;
 	} else {
-		bpf_debug("--> goose none-gw: src %x dst %x\n", 
+		bpf_debug("--> goose xgw: src %x dst %x\n",
 				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
+
+		// set src mac
+		trn_set_src_mac(pkt->data, pkt->eth->h_dest);
+
+		unsigned char dst_mac[6];
+		__u32 remote_gw_ip;
+		if (*tip == 0x17aa8c0) {	// 0x17aa8c0 --> 192.168.122.1
+			/*
+			 * left gateway function
+			 */
+			// option 1:
+			// return XDP_PASS;	// send to user space (e.g. for tcpdump to catch)
+
+			// option 2: send to the other gateway
+
+			remote_gw_ip = 0xf1fac;	// 0xf1fac -> right gateway host (172.31.15.0)
+
+			// right gw mac: 0a:b4:73:14:b9:91
+			dst_mac[0]=0xa;
+			dst_mac[1]=0xb4;
+			dst_mac[2]=0x73;
+			dst_mac[3]=0x14;
+			dst_mac[4]=0xb9;
+			dst_mac[5]=0x91;
+
+		} else if (*tip == 0x100a8c0) {        // 0x100a8c0 --> 192.168.0.1
+			/*
+			 * right gateway function
+			 */
+			// option 1: return XDP_PASS;   // send to user space (e.g. for tcpdump to catch)
+			//return XDP_PASS;
+
+			// option 2: send to the other gateway
+			remote_gw_ip = 0xd9021fac;	//0xd9021fac --> left gateway host (172.31.2.217)
+
+			// left gw mac: 0a:da:ad:8e:df:f7
+			dst_mac[0]=0xa;
+			dst_mac[1]=0xda;
+			dst_mac[2]=0xad;
+			dst_mac[3]=0x8e;
+			dst_mac[4]=0xdf;
+			dst_mac[5]=0xf7;
+		}
+
+		// set dst src and dst ip
+		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, remote_gw_ip);
+
+		// set dst mac
+		trn_set_src_mac(pkt->data, pkt->eth->h_dest);
+		trn_set_dst_mac(pkt->data, dst_mac);
+
+		bpf_debug("--> goose sending to gw %x:\n",
+				remote_gw_ip);
+		return XDP_TX;
 	}
-        
 
 	__be64 tunnel_id = trn_vni_to_tunnel_id(pkt->geneve->vni);
 
