@@ -165,8 +165,9 @@ transit switch of that network, OW forward to the transit router. */
 
 	/* Rewrite RTS and update cache*/
 	if (net) {
-		if  (pkt->ip->saddr == 0xd9021fac) { //0xd9021fac --> left gateway host (172.31.2.217)
- 			// traffic from 
+		//0xd9021fac(172.31.2.217) & 0xf1fac(172.31.15.0) --> left and right gateway hosts
+		if  (pkt->ip->saddr == 0xd9021fac ||
+			pkt->ip->saddr == 0xf1fac) {
 			bpf_debug("--> goose skipped updating ep_host_cache from src %x\n", 
 				pkt->ip->saddr);
 		} else {
