@@ -672,7 +672,7 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
         bpf_debug("[Transit:%d:] goose xip src: %x dst: %x\n", 
 			__LINE__, *sip, *tip);
 
-	if (*tip != 0x17aa8c && *tip != 0x100a8c00) {
+	if (*tip != 0x17aa8c0 && *tip != 0x100a8c00) {
 		bpf_debug("--> goose none-gw: src %x dst %x\n",
 				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
 	} else {
