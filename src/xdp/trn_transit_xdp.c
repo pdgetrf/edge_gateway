@@ -672,7 +672,16 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
         bpf_debug("[Transit:%d:] goose xip src: %x dst: %x\n", 
 			__LINE__, *sip, *tip);
 
-	if (*tip != 0x17aa8c0 && *tip != 0x100a8c00) {
+	// 0x17aa8c0 	--> 192.168.122.1
+	// 0x100a8c0 	--> 192.168.0.1
+	// 0xd9021fac 	--> left gateway host (172.31.2.217)
+	// 0xf1fac 	--> right gateway host (172.31.15.0)
+	/* logic here:
+		if it's the left gateway AND target ip is the right subnet, forward to the right gw!
+		if it's the right gateway AND target ip is the left subnet, forward to the left gw!
+		process as mizar usual otherwise
+	*/
+	if (!(pkt->ip->daddr == 0xd9021fac && *tip == 0x17aa8c0) && !(pkt->ip->daddr == 0xf1fac && *tip == 0x100a8c00)) {
 		bpf_debug("--> goose none-gw: src %x dst %x\n",
 				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
 	} else {
@@ -684,7 +693,7 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 
 		unsigned char dst_mac[6];
 		__u32 remote_gw_ip;
-		if (*tip == 0x17aa8c0) {	// 0x17aa8c0 --> 192.168.122.1
+		if (*tip == 0x17aa8c0) {
 			/*
 			 * left gateway function
 			 */
@@ -703,7 +712,7 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 			dst_mac[4]=0xb9;
 			dst_mac[5]=0x91;
 
-		} else if (*tip == 0x100a8c0) {        // 0x100a8c0 --> 192.168.0.1
+		} else if (*tip == 0x100a8c0) {
 			/*
 			 * right gateway function
 			 */
@@ -711,6 +720,7 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 			//return XDP_PASS;
 
 			// option 2: send to the other gateway
+
 			remote_gw_ip = 0xd9021fac;	//0xd9021fac --> left gateway host (172.31.2.217)
 
 			// left gw mac: 0a:da:ad:8e:df:f7
