@@ -48,6 +48,7 @@ class NetCreate(WorkflowTask):
         if not n:
             logger.info("NetCreate: Net not found in store. Creating new network object for {}".format(
                 self.param.name))
+
             n = nets_opr.get_net_stored_obj(self.param.name, self.param.spec)
         if len(droplets_opr.store.get_all_droplets()) == 0:
             self.raise_temporary_error(

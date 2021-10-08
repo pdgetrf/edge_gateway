@@ -134,3 +134,11 @@ class NetOperator(object):
     def deallocate_endpoint(self, ep):
         n = self.store.get_net(ep.net)
         n.deallocate_ip(ep.ip)
+
+    def process_portalhost_change(self, net, new):
+        logger.info("Update portal host to {} for net: {}".format(new, net.name))
+        net.set_portalhost(new)
+
+    def process_external_change(self, net, new):
+        logger.info("Update external to {} for net: {}".format(new, net.name))
+        net.set_external(new)
