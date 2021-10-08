@@ -21,6 +21,7 @@
 
 import logging
 import random
+from mizar.common.config import CONFIG
 from mizar.common.constants import *
 from mizar.common.common import *
 from kubernetes import client, config
@@ -92,19 +93,30 @@ class DropletOperator(object):
         droplets = set(self.store.get_all_droplets())
         if len(droplets) == 0:
             return False
+        subnets = self.store.get_nets_in_vpc(bouncer.vpc)
 
-	# remove the gateway from the droplet set
-        gw_droplet = ""
+        # remove portal hosts from the droplet set
+        portal_droplet = ""
+        subnet_ips = set()
+        logger.info("The current config portal host is {}".format(CONFIG.PORTAL_HOST))
+        for subnet in subnets.values():
+            if subnet.external:
+                subnet_ips.add(subnet.ip)
+                logger.info("A subnet ip {} for subnet {} has been added.".format( subnet.ip, subnet.name))
+
         for dd in droplets:
-            if dd.ip == '172.31.2.217':
-                gw_droplet = dd
+            if dd.ip == CONFIG.PORTAL_HOST:
+                portal_droplet = dd
+                logger.info("A droplet {} has been added as portal.".format(dd.ip))
 
-        droplets.remove(gw_droplet)
+        if portal_droplet != "":
+            droplets.remove(portal_droplet)
+            logger.info("The portal droplet {} has been removed.".format(portal_droplet))
 
-        if bouncer.get_nip() == '192.168.122.0':
-	    # for external subnets, use the gateway host instead of picking a host as bouncer
-            d = gw_droplet
-            logger.info("external subnet, using gw droplet {}".format(d.ip))
+        if bouncer.get_nip() in subnet_ips and portal_droplet != "":
+            # for external subnets, use the portal host instead of picking a host as bouncer
+            d = portal_droplet
+            logger.info("external subnet, using portal droplet {}".format(d.ip))
         else:
             for dd in droplets:
                 logger.info("goose: elegible droplet for bouncer {} {}".format(dd.name, dd.ip))
@@ -120,14 +132,15 @@ class DropletOperator(object):
         if len(droplets) == 0:
             return False
 
-        gw_droplet = ""
+        portal_droplet = ""
         for dd in droplets:
-            if dd.ip == '172.31.2.217':
-                gw_droplet = dd
+            if dd.ip == CONFIG.PORTAL_HOST:
+                portal_droplet = dd
+                logger.info("The portal droplet {} has been added.".format(dd.ip))
 
-        if gw_droplet != "":
-            droplets.remove(gw_droplet)
-        
+        if portal_droplet != "":
+            droplets.remove(portal_droplet)
+
         if len(droplets) == 0:
             logger.info("goose: unable to find any elegible droplet for divider {}".format(divider.name))
             return False
