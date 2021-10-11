@@ -663,13 +663,20 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 
 
 	if (pkt->inner_arp->ar_op == bpf_htons(ARPOP_REPLY)) {
-		bpf_debug("[Transit:%d:] goose ARPOP_REPLY\n", __LINE__); 
+		bpf_debug("[Transit:%d:] goose ARPOP_REPLY from %x\n",
+			__LINE__, pkt->ip->saddr);
 	} else {
-		bpf_debug("[Transit:%d:] goose ARPOP_REQUEST\n", __LINE__); 
+		bpf_debug("[Transit:%d:] goose ARPOP_REQUEST from %x\n",
+			__LINE__, pkt->ip->saddr);
 	}
 
-        bpf_debug("[Transit:%d:] goose mac src: %x dst: %x\n", 
-			__LINE__, *sha, *tha);
+        bpf_debug("[Transit:%d:] goose mac src: %x %x\n", 
+			__LINE__, sha[0], sha[1]);
+        bpf_debug("[Transit:%d:] goose mac src: %x %x\n", 
+			__LINE__, sha[2], sha[3]);
+        bpf_debug("[Transit:%d:] goose mac src: %x %x\n", 
+			__LINE__, sha[4], sha[5]);
+
         bpf_debug("[Transit:%d:] goose xip src: %x dst: %x\n", 
 			__LINE__, *sip, *tip);
 
@@ -765,6 +772,13 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 	/* Respond to ARP */
 	pkt->inner_arp->ar_op = bpf_htons(ARPOP_REPLY);
 	trn_set_arp_ha(tha, sha);
+        
+	bpf_debug("[Transit:%d:] goose ep mac dst: %x %x\n", 
+			__LINE__, ep->mac[0], ep->mac[1]);
+        bpf_debug("[Transit:%d:] goose ep mac dst: %x %x\n", 
+			__LINE__, ep->mac[2], ep->mac[3]);
+        bpf_debug("[Transit:%d:] goose ep mac dst: %x %x\n", 
+			__LINE__, ep->mac[4], ep->mac[5]);
 	trn_set_arp_ha(sha, ep->mac);
 
 	__u32 tmp_ip = *sip;
