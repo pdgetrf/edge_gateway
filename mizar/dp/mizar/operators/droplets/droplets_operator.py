@@ -92,19 +92,30 @@ class DropletOperator(object):
         droplets = set(self.store.get_all_droplets())
         if len(droplets) == 0:
             return False
+        subnets = self.store.get_nets_in_vpc(bouncer.vpc)
 
-	# remove the gateway from the droplet set
-        gw_droplet = ""
+        # remove portal hosts from the droplet set
+        portal_droplets = list()
+        portal_hosts = set()
+        subnet_ips = set()
+        for subnet in subnets.values():
+            if subnet.external:
+                portal_hosts.add(subnet.portalhost)
+                subnet_ips.add(subnet.ip)
+                logger.info("A portal host {} and subnet ip {} for subnet {} has been added.".format(subnet.portalhost, subnet.ip, subnet.name))
+
         for dd in droplets:
-            if dd.ip == '172.31.2.217':
-                gw_droplet = dd
+            if dd.ip in portal_hosts:
+                portal_droplets.append(dd)
+                logger.info("A droplet {} has been added as portal.".format(dd.ip))
 
-        droplets.remove(gw_droplet)
+        for portal_droplet in portal_droplets:
+            droplets.remove(portal_droplet)
 
-        if bouncer.get_nip() == '192.168.122.0':
-	    # for external subnets, use the gateway host instead of picking a host as bouncer
-            d = gw_droplet
-            logger.info("external subnet, using gw droplet {}".format(d.ip))
+        if bouncer.get_nip() in subnet_ips:
+            # for external subnets, use the portal host instead of picking a host as bouncer
+            d = random.choice(portal_droplets)
+            logger.info("external subnet, using portal droplet {}".format(d.ip))
         else:
             for dd in droplets:
                 logger.info("goose: elegible droplet for bouncer {} {}".format(dd.name, dd.ip))
@@ -119,15 +130,23 @@ class DropletOperator(object):
         droplets = set(self.store.get_all_droplets())
         if len(droplets) == 0:
             return False
+        subnets = self.store.get_nets_in_vpc(divider.vpc)
 
-        gw_droplet = ""
+        portal_hosts = set()
+        portal_droplets = list()
+        for subnet in subnets.values():
+            if subnet.external:
+                portal_hosts.add(subnet.portalhost)
+                logger.info("The portal host {} for subnet {} has been added.".format(subnet.portalhost, subnet.name))
+
         for dd in droplets:
-            if dd.ip == '172.31.2.217':
-                gw_droplet = dd
+            if dd.ip in portal_hosts:
+                portal_droplets.append(dd)
+                logger.info("The portal droplet {} has been added.".format(dd.ip))
 
-        if gw_droplet != "":
-            droplets.remove(gw_droplet)
-        
+        for portal_droplet in portal_droplets:
+            droplets.remove(portal_droplet)
+
         if len(droplets) == 0:
             logger.info("goose: unable to find any elegible droplet for divider {}".format(divider.name))
             return False
