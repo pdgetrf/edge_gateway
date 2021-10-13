@@ -165,19 +165,12 @@ transit switch of that network, OW forward to the transit router. */
 
 	/* Rewrite RTS and update cache*/
 	if (net) {
-		//0xd9021fac(172.31.2.217) & 0xf1fac(172.31.15.0) --> left and right gateway hosts
-		if  (pkt->ip->saddr == 0xd9021fac ||
-			pkt->ip->saddr == 0xf1fac) {
-			bpf_debug("--> goose skipped updating ep_host_cache from src %x\n", 
-				pkt->ip->saddr);
-		} else {
-			bpf_debug("--> goose updating ep host cache: src %x dst %x\n", 
-					pkt->ip->saddr, pkt->ip->daddr);
-			trn_update_ep_host_cache(pkt, tunnel_id, inner_src_ip);
-			pkt->rts_opt->rts_data.host.ip = pkt->ip->daddr;
-			__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
-					pkt->eth->h_dest, 6 * sizeof(unsigned char));
-		}
+		bpf_debug("--> goose updating ep host cache: src %x dst %x\n", 
+				pkt->ip->saddr, pkt->ip->daddr);
+		trn_update_ep_host_cache(pkt, tunnel_id, inner_src_ip);
+		pkt->rts_opt->rts_data.host.ip = pkt->ip->daddr;
+		__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
+				pkt->eth->h_dest, 6 * sizeof(unsigned char));
 	}
 
 	if (dst_r_ep) {
@@ -483,12 +476,85 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
         bpf_debug("[Transit:%d:] goose ip port : src %x dst %x\n", 
 			__LINE__, pkt->inner_ipv4_tuple.sport, pkt->inner_ipv4_tuple.dport);
         
-        bpf_debug("[Transit:%d:] goose ip src mac src: %x %x\n", 
-			__LINE__, pkt->eth->h_dest[0], pkt->eth->h_dest[1]);
-        bpf_debug("[Transit:%d:] goose ip src mac src: %x %x\n", 
-			__LINE__, pkt->eth->h_dest[2], pkt->eth->h_dest[3]);
-        bpf_debug("[Transit:%d:] goose ip src mac src: %x %x\n", 
-			__LINE__, pkt->eth->h_dest[4], pkt->eth->h_dest[5]);
+	bpf_debug("[Transit:%d:] goose my ip : %x\n", 
+			__LINE__, pkt->ip->daddr);
+		
+	bpf_debug("--> goose zzz1 %x\n",
+			(0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x07aa8c0);	// pkt->ip->daddr is ip of the current host
+	
+	
+	// get subnet of dst ip
+	// d7aa8c0 (13.122.168.192) 	1101   0111 1010 1010 1000 1100 0000
+	// 57aa8c0 (5.122.168.192)      0101   0111 1010 1010 1000 1100 0000
+	//  						&
+	// 0FFFFFF                      0000   1111 1111 1111 1111 1111 1111	
+	//
+	// and then 
+	//						^
+	// 0x07aa8c0 (0.122.168.192)	0000   0111 1010 1010 1000 1100 0000
+	// 0x000a8c0 (0.0.168.192)	0000   0000 0000 1010 1000 1100 0000 
+
+	/* logic here:
+	   if it's the left portal AND target ip is the right subnet, forward to the right gw!
+	   if it's the right portal AND target ip is the left subnet, forward to the left gw!
+	   process as mizar usual otherwise
+	 */
+	bpf_debug("--> goose portal checks: %x %x\n",
+			(pkt->ip->daddr == 0xd9021fac && !((0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x07aa8c0)),
+			((pkt->ip->daddr == 0xf1fac && !((0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x000a8c0))));
+	if (
+			// 0xd9021fac 	--> left portal host (172.31.2.217)
+			// 0xf1fac 	--> right portal host (172.31.15.0)
+			(pkt->ip->daddr == 0xd9021fac && !((0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x07aa8c0)) ||
+			((pkt->ip->daddr == 0xf1fac && !((0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x000a8c0)))
+	   ) {
+		bpf_debug("--> goose portal transfer: src %x dst %x\n",
+				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
+
+		// set src mac
+		trn_set_src_mac(pkt->data, pkt->eth->h_dest);
+
+		unsigned char dst_mac[6];
+		__u32 remote_portal_ip;
+		if (pkt->ip->daddr == 0xd9021fac) {
+			// left portal function
+			remote_portal_ip = 0xf1fac;	// 0xf1fac -> right portal host (172.31.15.0)
+
+			// right portal mac: 0a:b4:73:14:b9:91
+			dst_mac[0]=0xa;
+			dst_mac[1]=0xb4;
+			dst_mac[2]=0x73;
+			dst_mac[3]=0x14;
+			dst_mac[4]=0xb9;
+			dst_mac[5]=0x91;
+
+		} else {
+			// right portal function
+			remote_portal_ip = 0xd9021fac;	//0xd9021fac --> left portal host (172.31.2.217)
+
+			// left portal mac: 0a:da:ad:8e:df:f7
+			dst_mac[0]=0xa;
+			dst_mac[1]=0xda;
+			dst_mac[2]=0xad;
+			dst_mac[3]=0x8e;
+			dst_mac[4]=0xdf;
+			dst_mac[5]=0xf7;
+		}
+
+		// set dst src and dst ip
+		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, remote_portal_ip);
+
+		// set dst mac
+		trn_set_src_mac(pkt->data, pkt->eth->h_dest);
+		trn_set_dst_mac(pkt->data, dst_mac);
+
+		bpf_debug("--> goose sending to portal%x:\n",
+				remote_portal_ip);
+		return XDP_TX;
+	} else {
+		bpf_debug("--> goose none-portal: src %x dst %x\n",
+				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
+	}
 
 	__be64 tunnel_id = trn_vni_to_tunnel_id(pkt->geneve->vni);
 
@@ -693,16 +759,16 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
         bpf_debug("[Transit:%d:] goose xip src: %x dst: %x\n", 
 			__LINE__, *sip, *tip);
 
-	// 0x17aa8c0 	--> 192.168.122.1
-	// 0x100a8c0 	--> 192.168.0.1
-	// 0xd9021fac 	--> left gateway host (172.31.2.217)
-	// 0xf1fac 	--> right gateway host (172.31.15.0)
-	/* logic here:
-		if it's the left gateway AND target ip is the right subnet, forward to the right gw!
-		if it's the right gateway AND target ip is the left subnet, forward to the left gw!
-		process as mizar usual otherwise
-	*/
 	if (0) {
+		// 0x17aa8c0 	--> 192.168.122.1
+		// 0x100a8c0 	--> 192.168.0.1
+		// 0xd9021fac 	--> left portal host (172.31.2.217)
+		// 0xf1fac 	--> right portal host (172.31.15.0)
+		/* logic here:
+		   if it's the left portal AND target ip is the right subnet, forward to the right gw!
+		   if it's the right portal AND target ip is the left subnet, forward to the left gw!
+		   process as mizar usual otherwise
+		 */
 		if (!(pkt->ip->daddr == 0xd9021fac && *tip == 0x17aa8c0) && !(pkt->ip->daddr == 0xf1fac && *tip == 0x100a8c00)) {
 			bpf_debug("--> goose none-gw: src %x dst %x\n",
 					pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
@@ -714,17 +780,17 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 			trn_set_src_mac(pkt->data, pkt->eth->h_dest);
 
 			unsigned char dst_mac[6];
-			__u32 remote_gw_ip;
+			__u32 remote_portal_ip;
 			if (*tip == 0x17aa8c0) {
 				/*
-				 * left gateway function
+				 * left portal function
 				 */
 				// option 1:
 				// return XDP_PASS;	// send to user space (e.g. for tcpdump to catch)
 
-				// option 2: send to the other gateway
+				// option 2: send to the other portal
 
-				remote_gw_ip = 0xf1fac;	// 0xf1fac -> right gateway host (172.31.15.0)
+				remote_portal_ip = 0xf1fac;	// 0xf1fac -> right portal host (172.31.15.0)
 
 				// right gw mac: 0a:b4:73:14:b9:91
 				dst_mac[0]=0xa;
@@ -736,14 +802,14 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 
 			} else if (*tip == 0x100a8c0) {
 				/*
-				 * right gateway function
+				 * right portal function
 				 */
 				// option 1: return XDP_PASS;   // send to user space (e.g. for tcpdump to catch)
 				//return XDP_PASS;
 
-				// option 2: send to the other gateway
+				// option 2: send to the other portal
 
-				remote_gw_ip = 0xd9021fac;	//0xd9021fac --> left gateway host (172.31.2.217)
+				remote_portal_ip = 0xd9021fac;	//0xd9021fac --> left portal host (172.31.2.217)
 
 				// left gw mac: 0a:da:ad:8e:df:f7
 				dst_mac[0]=0xa;
@@ -755,14 +821,14 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 			}
 
 			// set dst src and dst ip
-			trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, remote_gw_ip);
+			trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, remote_portal_ip);
 
 			// set dst mac
 			trn_set_src_mac(pkt->data, pkt->eth->h_dest);
 			trn_set_dst_mac(pkt->data, dst_mac);
 
 			bpf_debug("--> goose sending to gw %x:\n",
-					remote_gw_ip);
+					remote_portal_ip);
 			return XDP_TX;
 		}
 	}
