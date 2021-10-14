@@ -96,27 +96,11 @@ class DropletOperator(object):
 	# remove the gateway from the droplet set
         gw_droplet = ""
         for dd in droplets:
-            if dd.ip == '172.31.2.217':
+            if dd.ip == '172.31.13.172':
                 gw_droplet = dd
         droplets.remove(gw_droplet)
         
-	# 172.31.15.238 is used only for pod in subnet 2
-        pod2_droplet = ""
-        for dd in droplets:
-            if dd.ip == '172.31.15.238':
-                pod2_droplet = dd
-        if pod2_droplet != "":
-                droplets.remove(pod2_droplet)
-        pod2_droplet = ""
-
-	# 172.31.7.100 is the master and has some issue running pod
-        for dd in droplets:
-            if dd.ip == '172.31.7.100':
-                pod2_droplet = dd
-        if pod2_droplet != "":
-                droplets.remove(pod2_droplet)
-
-        if bouncer.get_nip() == '192.168.122.0':
+        if bouncer.get_nip() == '192.168.0.0':
 	    # for external subnets, use the gateway host instead of picking a host as bouncer
             d = gw_droplet
             logger.info("external subnet, using gw droplet {}".format(d.ip))
@@ -137,25 +121,11 @@ class DropletOperator(object):
 
         gw_droplet = ""
         for dd in droplets:
-            if dd.ip == '172.31.2.217':
+            if dd.ip == '172.31.13.172':
                 gw_droplet = dd
         if gw_droplet != "":
             droplets.remove(gw_droplet)
 	
-        pod2_droplet = ""
-        for dd in droplets:
-            if dd.ip == '172.31.15.238':
-                pod2_droplet = dd
-        if pod2_droplet != "":
-                droplets.remove(pod2_droplet)
-        pod2_droplet = ""
-        for dd in droplets:
-            if dd.ip == '172.31.7.100':
-                pod2_droplet = dd
-        if pod2_droplet != "":
-                droplets.remove(pod2_droplet)
-
-        
         if len(droplets) == 0:
             logger.info("goose: unable to find any elegible droplet for divider {}".format(divider.name))
             return False
