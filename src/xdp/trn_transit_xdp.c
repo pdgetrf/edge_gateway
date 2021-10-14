@@ -165,12 +165,17 @@ transit switch of that network, OW forward to the transit router. */
 
 	/* Rewrite RTS and update cache*/
 	if (net) {
-		bpf_debug("--> goose updating ep host cache: src %x dst %x\n", 
-				pkt->ip->saddr, pkt->ip->daddr);
-		trn_update_ep_host_cache(pkt, tunnel_id, inner_src_ip);
-		pkt->rts_opt->rts_data.host.ip = pkt->ip->daddr;
-		__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
-				pkt->eth->h_dest, 6 * sizeof(unsigned char));
+		if  (pkt->ip->saddr == 0xd9021fac || pkt->ip->saddr == 0xac0d1fac) {
+			bpf_debug("--> goose skipped updating ep_host_cache from src %x\n", 
+					pkt->ip->saddr);
+		} else {
+			bpf_debug("--> goose updating ep host cache: src %x dst %x\n", 
+					pkt->ip->saddr, pkt->ip->daddr);
+			trn_update_ep_host_cache(pkt, tunnel_id, inner_src_ip);
+			pkt->rts_opt->rts_data.host.ip = pkt->ip->daddr;
+			__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
+					pkt->eth->h_dest, 6 * sizeof(unsigned char));
+		}
 	}
 
 	if (dst_r_ep) {
