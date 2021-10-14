@@ -473,26 +473,24 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
         bpf_debug("[Transit:%d:] goose ip : src %x dst %x\n", 
 			__LINE__, pkt->inner_ipv4_tuple.saddr, pkt->inner_ipv4_tuple.daddr);
 
-        bpf_debug("[Transit:%d:] goose ip port : src %x dst %x\n", 
-			__LINE__, pkt->inner_ipv4_tuple.sport, pkt->inner_ipv4_tuple.dport);
-        
 	bpf_debug("[Transit:%d:] goose my ip : %x\n", 
 			__LINE__, pkt->ip->daddr);
 		
 	bpf_debug("--> goose zzz1 %x\n",
-			(0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x07aa8c0);	// pkt->ip->daddr is ip of the current host
+			(0x00FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x0000a8c0);	// pkt->ip->daddr is ip of the current host
 	
 	
 	// get subnet of dst ip
-	// d7aa8c0 (13.122.168.192) 	1101   0111 1010 1010 1000 1100 0000
-	// 57aa8c0 (5.122.168.192)      0101   0111 1010 1010 1000 1100 0000
+	// 0d7aa8c0 (13.122.168.192) 	 0000 1101   0111 1010 1010 1000 1100 0000
+	// 057aa8c0 (5.122.168.192)      0000 0101   0111 1010 1010 1000 1100 0000
+	// 
 	//  						&
-	// 0FFFFFF                      0000   1111 1111 1111 1111 1111 1111	
+	// 0x00FFFFFF                      0000 0000   1111 1111 1111 1111 1111 1111	
 	//
 	// and then 
 	//						^
-	// 0x07aa8c0 (0.122.168.192)	0000   0111 1010 1010 1000 1100 0000
-	// 0x000a8c0 (0.0.168.192)	0000   0000 0000 1010 1000 1100 0000 
+	// 0x007aa8c0 (0.122.168.192)	 0000 0000   0111 1010 1010 1000 1100 0000
+	// 0x0000a8c0 (0.0.168.192)	 0000 0000   0000 0000 1010 1000 1100 0000 
 
 	/* logic here:
 	   if it's the left portal AND target ip is the right subnet, forward to the right gw!
@@ -500,13 +498,13 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
 	   process as mizar usual otherwise
 	 */
 	bpf_debug("--> goose portal checks: %x %x\n",
-			(pkt->ip->daddr == 0xd9021fac && !((0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x07aa8c0)),
-			((pkt->ip->daddr == 0xf1fac && !((0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x000a8c0))));
+			(pkt->ip->daddr == 0xd9021fac && !((0x00FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x007aa8c0)),
+			((pkt->ip->daddr == 0xac0d1fac && !((0x00FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x0000a8c0))));
 	if (
 			// 0xd9021fac 	--> left portal host (172.31.2.217)
-			// 0xf1fac 	--> right portal host (172.31.15.0)
-			(pkt->ip->daddr == 0xd9021fac && !((0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x07aa8c0)) ||
-			((pkt->ip->daddr == 0xf1fac && !((0x0FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x000a8c0)))
+			// 0xac0d1fac 	--> right portal host (172.31.13.172)
+			(pkt->ip->daddr == 0xd9021fac && !((0x00FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x007aa8c0)) ||
+			((pkt->ip->daddr == 0xac0d1fac && !((0x00FFFFFF & pkt->inner_ipv4_tuple.daddr) ^ 0x0000a8c0)))
 	   ) {
 		bpf_debug("--> goose portal transfer: src %x dst %x\n",
 				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
@@ -518,15 +516,15 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
 		__u32 remote_portal_ip;
 		if (pkt->ip->daddr == 0xd9021fac) {
 			// left portal function
-			remote_portal_ip = 0xf1fac;	// 0xf1fac -> right portal host (172.31.15.0)
+			remote_portal_ip = 0xac0d1fac;	// 0xac0d1fac -> right portal host (172.31.13.172)
 
-			// right portal mac: 0a:b4:73:14:b9:91
+			// right portal mac: 0a:3c:48:ab:9e:0b 
 			dst_mac[0]=0xa;
-			dst_mac[1]=0xb4;
-			dst_mac[2]=0x73;
-			dst_mac[3]=0x14;
-			dst_mac[4]=0xb9;
-			dst_mac[5]=0x91;
+			dst_mac[1]=0x3c;
+			dst_mac[2]=0x48;
+			dst_mac[3]=0xab;
+			dst_mac[4]=0x9e;
+			dst_mac[5]=0x0b;
 
 		} else {
 			// right portal function
