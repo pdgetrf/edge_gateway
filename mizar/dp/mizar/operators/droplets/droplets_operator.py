@@ -21,6 +21,7 @@
 
 import logging
 import random
+from mizar.common.config import CONFIG
 from mizar.common.constants import *
 from mizar.common.common import *
 from kubernetes import client, config
@@ -95,26 +96,26 @@ class DropletOperator(object):
         subnets = self.store.get_nets_in_vpc(bouncer.vpc)
 
         # remove portal hosts from the droplet set
-        portal_droplets = list()
-        portal_hosts = set()
+        portal_droplet = ""
         subnet_ips = set()
+        logger.info("The current config portal host is {}".format(CONFIG.PORTAL_HOST))
         for subnet in subnets.values():
             if subnet.external:
-                portal_hosts.add(subnet.portalhost)
                 subnet_ips.add(subnet.ip)
-                logger.info("A portal host {} and subnet ip {} for subnet {} has been added.".format(subnet.portalhost, subnet.ip, subnet.name))
+                logger.info("A subnet ip {} for subnet {} has been added.".format( subnet.ip, subnet.name))
 
         for dd in droplets:
-            if dd.ip in portal_hosts:
-                portal_droplets.append(dd)
+            if dd.ip == CONFIG.PORTAL_HOST:
+                portal_droplet = dd
                 logger.info("A droplet {} has been added as portal.".format(dd.ip))
 
-        for portal_droplet in portal_droplets:
+        if portal_droplet != "":
             droplets.remove(portal_droplet)
+            logger.info("The portal droplet {} has been removed.".format(portal_droplet))
 
-        if bouncer.get_nip() in subnet_ips:
+        if bouncer.get_nip() in subnet_ips and portal_droplet != "":
             # for external subnets, use the portal host instead of picking a host as bouncer
-            d = random.choice(portal_droplets)
+            d = portal_droplet
             logger.info("external subnet, using portal droplet {}".format(d.ip))
         else:
             for dd in droplets:
@@ -130,21 +131,14 @@ class DropletOperator(object):
         droplets = set(self.store.get_all_droplets())
         if len(droplets) == 0:
             return False
-        subnets = self.store.get_nets_in_vpc(divider.vpc)
 
-        portal_hosts = set()
-        portal_droplets = list()
-        for subnet in subnets.values():
-            if subnet.external:
-                portal_hosts.add(subnet.portalhost)
-                logger.info("The portal host {} for subnet {} has been added.".format(subnet.portalhost, subnet.name))
-
+        portal_droplet = ""
         for dd in droplets:
-            if dd.ip in portal_hosts:
-                portal_droplets.append(dd)
+            if dd.ip == CONFIG.PORTAL_HOST:
+                portal_droplet = dd
                 logger.info("The portal droplet {} has been added.".format(dd.ip))
 
-        for portal_droplet in portal_droplets:
+        if portal_droplet != "":
             droplets.remove(portal_droplet)
 
         if len(droplets) == 0:

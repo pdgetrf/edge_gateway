@@ -115,6 +115,7 @@ struct user_metadata_t {
 	__u32 xdp_flags;
 	int prog_fd;
 	__u32 prog_id;
+	__u64 portal_host;
 
 	char pcapfile[256];
 	int itf_idx[TRAN_MAX_ITF];
