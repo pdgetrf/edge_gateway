@@ -122,8 +122,13 @@ int *update_vpc_1_svc(rpc_trn_vpc_t *vpc, struct svc_req *rqstp)
 		goto error;
 	}
 
+	TRN_LOG_DEBUG(
+                "update_vpc_1 VPC tunid: %ld with %d routers with portal: 0x%x",
+                vpc->tunid, vpc->routers_ips.routers_ips_len, md->portal_host);
+
 	vpckey.tunnel_id = vpc->tunid;
 	vpcval.nrouters = vpc->routers_ips.routers_ips_len;
+        vpcval.portal_host = md->portal_host;
 
 	if (vpcval.nrouters > TRAN_MAX_NROUTER) {
 		TRN_LOG_WARN("Number of maximum transit routers exceeded,"
@@ -639,11 +644,12 @@ int *load_transit_xdp_1_svc(rpc_trn_xdp_intf_t *xdp_intf, struct svc_req *rqstp)
 	strcpy(md->pcapfile, xdp_intf->pcapfile);
 	md->pcapfile[255] = '\0';
 	md->xdp_flags = xdp_intf->xdp_flag;
+	md->portal_host = xdp_intf->portal_host;
 
-	TRN_LOG_DEBUG("load_transit_xdp_1 path: %s, pcap: %s",
-		      xdp_intf->xdp_path, xdp_intf->pcapfile);
+	TRN_LOG_DEBUG("load_transit_xdp_1 path: %s, pcap: %s, portal: 0x%x",
+		      xdp_intf->xdp_path, xdp_intf->pcapfile, xdp_intf->portal_host);
 
-	rc = trn_user_metadata_init(md, itf, kern_path, md->xdp_flags);
+	rc = trn_user_metadata_init(md, itf, kern_path, md->xdp_flags, md->portal_host);
 
 	if (rc != 0) {
 		TRN_LOG_ERROR(
