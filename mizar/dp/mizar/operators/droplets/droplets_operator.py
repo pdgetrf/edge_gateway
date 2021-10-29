@@ -97,11 +97,11 @@ class DropletOperator(object):
 
         # remove portal hosts from the droplet set
         portal_droplet = ""
-        subnet_ips = set()
+        external_subnet_ips = set()
         logger.info("The current config portal host is {}".format(CONFIG.PORTAL_HOST))
         for subnet in subnets.values():
             if subnet.external:
-                subnet_ips.add(subnet.ip)
+                external_subnet_ips.add(subnet.ip)
                 logger.info("A subnet ip {} for subnet {} has been added.".format( subnet.ip, subnet.name))
 
         for dd in droplets:
@@ -113,13 +113,13 @@ class DropletOperator(object):
             droplets.remove(portal_droplet)
             logger.info("The portal droplet {} has been removed.".format(portal_droplet))
 
-        if bouncer.get_nip() in subnet_ips and portal_droplet != "":
+        if bouncer.get_nip() in external_subnet_ips and portal_droplet != "":
             # for external subnets, use the portal host instead of picking a host as bouncer
             d = portal_droplet
             logger.info("external subnet, using portal droplet {}".format(d.ip))
         else:
             for dd in droplets:
-                logger.info("goose: elegible droplet for bouncer {} {}".format(dd.name, dd.ip))
+                logger.info("elegible droplet for bouncer {} {}".format(dd.name, dd.ip))
             d = random.sample(droplets, 1)[0]
 
         logger.info("assign_bouncer_droplet in action: name={}, ip={}, mac={}, bouncer nip={}".format(d.name, d.ip, d.mac, bouncer.get_nip()))
