@@ -96,12 +96,12 @@ class DropletOperator(object):
 	# remove the gateway from the droplet set
         gw_droplet = ""
         for dd in droplets:
-            if dd.ip == '172.31.2.217':
+            if dd.ip == '172.31.15.0':
                 gw_droplet = dd
 
         droplets.remove(gw_droplet)
 
-        if bouncer.get_nip() == '192.168.122.0':
+        if bouncer.get_nip() == '192.168.0.0':
 	    # for external subnets, use the gateway host instead of picking a host as bouncer
             d = gw_droplet
             logger.info("external subnet, using gw droplet {}".format(d.ip))
@@ -122,7 +122,7 @@ class DropletOperator(object):
 
         gw_droplet = ""
         for dd in droplets:
-            if dd.ip == '172.31.2.217':
+            if dd.ip == '172.31.15.0':
                 gw_droplet = dd
 
         if gw_droplet != "":

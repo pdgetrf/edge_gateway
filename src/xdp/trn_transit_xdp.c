@@ -155,9 +155,17 @@ transit switch of that network, OW forward to the transit router. */
 	/* Rewrite RTS and update cache*/
 
 	if (net) {
-		if  (pkt->ip->saddr == 0xd9021fac) { //0xd9021fac --> gateway host (172.31.2.217) 
+		// if we are at the divider and we see it is towards an external subnet
+		//if (inner_dst_ip==0x7a00a8c0) {
+		if ((inner_dst_ip & 0x0ffffff) ==0xa8c0) {
+			bpf_debug("[Transit:%d:] goose2 %x\n", __LINE__, inner_dst_ip);
+			trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, 0xf1fac);
+			return trn_rewrite_remote_mac(pkt);
+		}
+
+		if  (pkt->ip->saddr == 0x000f1fac) { //0x000f1fac --> left gateway host (172.31.15.0) 
  			// traffic from 
-			bpf_debug("--> goose skipped updating ep_host_cache from src %x\n", 
+			bpf_debug("--> qian skipped updating ep_host_cache from src %x\n", 
 				pkt->ip->saddr);
 		} else {
 			bpf_debug("--> goose updating ep host cache: src %x dst %x\n", 
@@ -167,6 +175,7 @@ transit switch of that network, OW forward to the transit router. */
 			__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
 					pkt->eth->h_dest, 6 * sizeof(unsigned char));
 		}
+		//bpf_debug("--> goose skipped updating ep_host_cache from src %x\n", pkt->ip->saddr);
 	}
 
 	if (dst_r_ep) {
@@ -218,13 +227,6 @@ transit switch of that network, OW forward to the transit router. */
 
 	bpf_debug("[Transit:%d:] goose1 src: %x dst: %x\n", 
 		__LINE__, inner_src_ip, inner_dst_ip);
-/*
-        if (inner_dst_ip==0x6f6fa8c0) {
-		bpf_debug("[Transit:%d:] goose2 %x\n", __LINE__, inner_dst_ip);
-		trn_set_src_dst_ip_csum(pkt, pkt->ip->daddr, 0xde0e1fac);
-		return trn_rewrite_remote_mac(pkt);
-	}
-*/
 
 	/* Now forward the packet to the VPC router */
 	struct vpc_key_t vpckey;
@@ -473,6 +475,18 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
 		pkt->inner_ipv4_tuple.dport = pkt->inner_udp->dest;
 	}
 
+	/*bpf_debug("--> qian geneve ip:  src %x dst %x\n", 
+			pkt->inner_ipv4_tuple.saddr, 
+			pkt->inner_ipv4_tuple.daddr);  */
+
+	// peng also check the source outer IP here
+	if (pkt->ip->daddr == 0xf1fac && ((pkt->inner_ipv4_tuple.daddr & 0xffffff) == 0x00a8c0)) {	// target is 192.168.0.# and we are at the portal 
+		bpf_debug("--> qian passed to user space: inner src %x inner dst %x\n", 
+				pkt->inner_ipv4_tuple.saddr, 
+				pkt->inner_ipv4_tuple.daddr);  
+		return XDP_PASS;
+	}
+
 	__be64 tunnel_id = trn_vni_to_tunnel_id(pkt->geneve->vni);
 
 	if (pkt->inner_ipv4_tuple.protocol == IPPROTO_TCP || pkt->inner_ipv4_tuple.protocol == IPPROTO_UDP) {
@@ -663,23 +677,6 @@ static __inline int trn_process_inner_arp(struct transit_packet *pkt)
 	} else {
 		bpf_debug("[Transit:%d:] goose ARPOP_REQUEST\n"); 
 	}
-        bpf_debug("[Transit:%d:] goose mac src: %x dst: %x\n", 
-			__LINE__, *sha, *tha);
-		
-	
-        bpf_debug("[Transit:%d:] goose ip src: %x dst: %x\n", 
-			__LINE__, *sip, *tip);
-
-        if (*tip == 0x17aa8c0) {	// 0x17aa8c0 --> 192.168.122.1
-		bpf_debug("--> goose gw: src %x dst %x\n", 
-				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
-//		return XDP_PASS;	// send to user space (e.g. for tcpdump to catch)
-	} else {
-
-		bpf_debug("--> goose none-gw: src %x dst %x\n", 
-				pkt->ip->saddr, pkt->ip->daddr);	// pkt->ip->daddr is ip of the current host
-	}
-        
 
 	__be64 tunnel_id = trn_vni_to_tunnel_id(pkt->geneve->vni);
 

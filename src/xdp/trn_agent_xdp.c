@@ -128,10 +128,12 @@ static __inline int trn_encapsulate(struct transit_packet *pkt,
 	} else if (!trn_select_transit_switch(pkt, metadata, tun_id, in_src_ip,
 					      in_dst_ip, &s_port, &d_addr)) {
 		/* Get the endpoint of the transit switch for outer dst mac */
-		bpf_debug(
+		/*bpf_debug(
 			"[Agent:%ld.0x%x] Sending dst 0x%x, to transit switch!\n",
 			pkt->agent_ep_tunid, bpf_ntohl(pkt->agent_ep_ipv4),
-			bpf_ntohl(in_dst_ip));
+			bpf_ntohl(in_dst_ip));*/
+			bpf_debug(
+			"qian: Sending dst 0x%x, to transit switch %x!\n",	bpf_ntohl(in_dst_ip), bpf_ntohl(d_addr));
 		r_epkey.tunip[0] = 0;
 		r_epkey.tunip[1] = 0;
 		r_epkey.tunip[2] = d_addr;
@@ -143,7 +145,9 @@ static __inline int trn_encapsulate(struct transit_packet *pkt,
 				  pkt->agent_ep_tunid,
 				  bpf_ntohl(pkt->agent_ep_ipv4));
 			return XDP_DROP;
-		}
+		} /*else {
+			bpf_debug(" qian --- in_dst_ip %x : d_addr %x \n",bpf_ntohl(in_dst_ip), bpf_ntohl(d_addr));
+		}*/
 
 		d_mac = r_ep->mac;
 
