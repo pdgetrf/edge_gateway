@@ -639,10 +639,9 @@ int *load_transit_xdp_1_svc(rpc_trn_xdp_intf_t *xdp_intf, struct svc_req *rqstp)
 	strcpy(md->pcapfile, xdp_intf->pcapfile);
 	md->pcapfile[255] = '\0';
 	md->xdp_flags = xdp_intf->xdp_flag;
-	md->portal_host = xdp_intf->portal_host;
 
-	TRN_LOG_DEBUG("load_transit_xdp_1 path: %s, pcap: %s, portal host: %s",
-		      xdp_intf->xdp_path, xdp_intf->pcapfile, xdp_intf->portal_host);
+	TRN_LOG_DEBUG("load_transit_xdp_1 path: %s, pcap: %s",
+		      xdp_intf->xdp_path, xdp_intf->pcapfile);
 
 	rc = trn_user_metadata_init(md, itf, kern_path, md->xdp_flags);
 

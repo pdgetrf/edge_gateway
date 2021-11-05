@@ -40,7 +40,6 @@ class NetProvisioned(WorkflowTask):
             logger.info("NetProvisioned: Net not found in store. Creating new network object for {}".format(
                 self.param.name))
             net = nets_opr.get_net_stored_obj(self.param.name, self.param.spec)
-
         logger.info("Provisioned Net ip is {}".format(net.ip))
         for d in self.param.diff:
             if d[0] == 'change':
@@ -52,7 +51,5 @@ class NetProvisioned(WorkflowTask):
         logger.info("diff_field:{}, from:{}, to:{}".format(field, old, new))
         if field[0] == 'spec' and field[1] == 'bouncers':
             return nets_opr.process_bouncer_change(net, int(old), int(new))
-        if field[0] == 'spec' and field[1] == 'portalhost':
-            return nets_opr.process_portalhost_change(net, new)
         if field[0] == 'spec' and field[1] == 'external':
             return nets_opr.process_external_change(net, new)

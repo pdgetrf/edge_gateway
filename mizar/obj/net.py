@@ -68,6 +68,7 @@ class Net(object):
             "status": self.status,
             "external": self.external
         }
+
         return self.obj
 
     def set_obj_spec(self, spec):

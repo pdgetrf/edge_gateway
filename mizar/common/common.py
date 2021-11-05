@@ -441,12 +441,3 @@ def get_itf():
         return os.getenv("MIZAR_ITF")
     else:
         return default_itf
-
-def get_portal_host():
-    portal_host = ""
-    with open("/var/mizar/install/config.json", "r") as jsonconfigfile:
-        jsonconfig = json.load(jsonconfigfile)
-        portal_host = jsonconfig["portal_host"]
-        logger.info("The portal host is {}\n".format(portal_host))
-        jsonconfigfile.close()
-    return portal_host

@@ -21,7 +21,6 @@
 
 import logging
 import random
-from mizar.common.config import CONFIG
 from mizar.common.constants import *
 from mizar.common.common import *
 from kubernetes import client, config
@@ -97,7 +96,7 @@ class DropletOperator(object):
         subnets = self.store.get_nets_in_vpc(bouncer.vpc)
 
         # Read portal_host_ip from configmap
-        portal_host_config = kube_read_config_map(self.core_api,  "portal-host-config", "default")
+        portal_host_config = kube_read_config_map(self.core_api, "portal-host-config", "default")
         portal_host_ip = ""
         if portal_host_config:
             portal_host_ip = portal_host_config.data["portal_host_ip"]

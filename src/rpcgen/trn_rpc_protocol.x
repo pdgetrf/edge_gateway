@@ -134,7 +134,6 @@ struct rpc_trn_xdp_intf_t {
        string xdp_path<256>;
        string pcapfile<256>;
        uint8_t xdp_flag;
-       uint32_t portal_host;
 };
 
 /* Defines an interface */

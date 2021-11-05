@@ -319,7 +319,6 @@ class TrnRpc:
             "nip": net.get_nip(),
             "prefixlen": net.get_prefixlen(),
             "switches_ips": net.get_bouncers_ips(),
-            "portalhost": net.get_portalhost(),
             "external": net.get_external()
         }
         jsonconf = json.dumps(jsonconf)
