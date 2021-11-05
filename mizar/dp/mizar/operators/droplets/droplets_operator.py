@@ -96,7 +96,7 @@ class DropletOperator(object):
 	# remove the gateway from the droplet set
         gw_droplet = ""
         for dd in droplets:
-            if dd.ip == '172.31.2.217':
+            if dd.ip == '172.31.10.149':
                 gw_droplet = dd
 
         droplets.remove(gw_droplet)
@@ -122,7 +122,7 @@ class DropletOperator(object):
 
         gw_droplet = ""
         for dd in droplets:
-            if dd.ip == '172.31.2.217':
+            if dd.ip == '172.31.10.149':
                 gw_droplet = dd
 
         if gw_droplet != "":
