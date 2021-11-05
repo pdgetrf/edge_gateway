@@ -28,6 +28,8 @@ import asyncio
 import os.path
 import time
 from kopf import cli
+from mizar.common.config import CONFIG
+from mizar.common.common import get_portal_host
 from mizar.common.wf_param import *
 from mizar.dp.mizar.workflows.vpcs.triggers import *
 from mizar.dp.mizar.workflows.nets.triggers import *
@@ -62,6 +64,7 @@ async def on_startup(logger, **kwargs):
     LOCK = asyncio.Lock()
     param = HandlerParam()
     config.load_incluster_config()
+    CONFIG.PORTAL_HOST = get_portal_host()
     sched = 'luigid --background --port 8082 --pidfile /var/run/luigi/luigi.pid --logdir /var/log/luigi --state-path /var/lib/luigi/luigi.state'
     subprocess.call(sched, shell=True)
     while not os.path.exists("/var/run/luigi/luigi.pid"):

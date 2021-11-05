@@ -21,6 +21,7 @@
 
 import logging
 import random
+from mizar.common.config import CONFIG
 from mizar.common.constants import *
 from mizar.common.common import *
 from kubernetes import client, config
@@ -93,6 +94,7 @@ class DropletOperator(object):
         droplets = set(self.store.get_all_droplets())
         if len(droplets) == 0:
             return False
+        subnets = self.store.get_nets_in_vpc(bouncer.vpc)
 
         # Read portal_host_ip from configmap
         portal_host_config = kube_read_config_map(self.core_api,  "portal-host-config", "default")
@@ -107,10 +109,10 @@ class DropletOperator(object):
 
         # remove portal hosts from the droplet set
         portal_droplet = ""
-        subnet_ips = set()
+        external_subnet_ips = set()
         for subnet in subnets.values():
             if subnet.external:
-                subnet_ips.add(subnet.ip)
+                external_subnet_ips.add(subnet.ip)
                 logger.info("A subnet ip {} for subnet {} has been added.".format( subnet.ip, subnet.name))
 
         for dd in droplets:
@@ -122,13 +124,13 @@ class DropletOperator(object):
             droplets.remove(portal_droplet)
             logger.info("The portal droplet {} has been removed.".format(portal_droplet))
 
-        if bouncer.get_nip() in subnet_ips and portal_droplet != "":
+        if bouncer.get_nip() in external_subnet_ips and portal_droplet != "":
             # for external subnets, use the portal host instead of picking a host as bouncer
             d = portal_droplet
             logger.info("external subnet, using portal droplet {}".format(d.ip))
         else:
             for dd in droplets:
-                logger.info("goose: elegible droplet for bouncer {} {}".format(dd.name, dd.ip))
+                logger.info("elegible droplet for bouncer {} {}".format(dd.name, dd.ip))
             d = random.sample(droplets, 1)[0]
 
         logger.info("assign_bouncer_droplet in action: name={}, ip={}, mac={}, bouncer nip={}".format(d.name, d.ip, d.mac, bouncer.get_nip()))

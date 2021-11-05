@@ -46,7 +46,6 @@ class Net(object):
         self.status = OBJ_STATUS.net_status_init
         self.ip = OBJ_DEFAULTS.default_net_ip
         self.prefix = OBJ_DEFAULTS.default_net_prefix
-        self.portalhost = ""
         self.external = False
         if spec is not None:
             self.set_obj_spec(spec)
@@ -67,7 +66,6 @@ class Net(object):
             "vpc": self.vpc,
             "bouncers": self.n_bouncers,
             "status": self.status,
-            "portalhost": self.portalhost,
             "external": self.external
         }
         return self.obj
@@ -81,7 +79,6 @@ class Net(object):
         self.ip = get_spec_val('ip', spec, OBJ_DEFAULTS.default_net_ip)
         self.prefix = get_spec_val(
             'prefix', spec, OBJ_DEFAULTS.default_net_prefix)
-        self.portalhost = get_spec_val('portalhost', spec)
         self.external = bool(get_spec_val('external', spec))
 
     # K8s APIs
@@ -122,9 +119,6 @@ class Net(object):
     def set_status(self, status):
         self.status = status
 
-    def set_portalhost(self, portalhost):
-        self.portalhost = portalhost
-
     def set_external(self, external):
         self.external = external
 
@@ -146,9 +140,6 @@ class Net(object):
             if b.ip not in bouncer_ips:
                 bouncer_ips.append(b.ip)
         return bouncer_ips
-
-    def get_portalhost(self):
-        return str(self.portalhost)
 
     def get_external(self):
         return bool(self.external)
