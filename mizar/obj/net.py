@@ -46,6 +46,7 @@ class Net(object):
         self.status = OBJ_STATUS.net_status_init
         self.ip = OBJ_DEFAULTS.default_net_ip
         self.prefix = OBJ_DEFAULTS.default_net_prefix
+        self.external = False
         if spec is not None:
             self.set_obj_spec(spec)
         if self.prefix == "":
@@ -64,7 +65,8 @@ class Net(object):
             "vni": self.vni,
             "vpc": self.vpc,
             "bouncers": self.n_bouncers,
-            "status": self.status
+            "status": self.status,
+            "external": self.external
         }
 
         return self.obj
@@ -78,6 +80,7 @@ class Net(object):
         self.ip = get_spec_val('ip', spec, OBJ_DEFAULTS.default_net_ip)
         self.prefix = get_spec_val(
             'prefix', spec, OBJ_DEFAULTS.default_net_prefix)
+        self.external = bool(get_spec_val('external', spec))
 
     # K8s APIs
     def get_name(self):
@@ -117,6 +120,9 @@ class Net(object):
     def set_status(self, status):
         self.status = status
 
+    def set_external(self, external):
+        self.external = external
+
     def get_gw_ip(self):
         return str(self.cidr.get_ip(1))
 
@@ -135,6 +141,9 @@ class Net(object):
             if b.ip not in bouncer_ips:
                 bouncer_ips.append(b.ip)
         return bouncer_ips
+
+    def get_external(self):
+        return bool(self.external)
 
     def create_bouncer(self):
         u = str(uuid.uuid4())
