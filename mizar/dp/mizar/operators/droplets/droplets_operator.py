@@ -21,7 +21,6 @@
 
 import logging
 import random
-from mizar.common.config import CONFIG
 from mizar.common.constants import *
 from mizar.common.common import *
 from kubernetes import client, config
@@ -48,6 +47,7 @@ class DropletOperator(object):
         self.store = OprStore()
         config.load_incluster_config()
         self.obj_api = client.CustomObjectsApi()
+        self.core_api = client.CoreV1Api()
         self.bootstrapped = False
 
     def query_existing_droplets(self):
@@ -95,17 +95,27 @@ class DropletOperator(object):
             return False
         subnets = self.store.get_nets_in_vpc(bouncer.vpc)
 
+        # Read portal_host_ip from configmap
+        portal_host_config = kube_read_config_map(self.core_api, "portal-host-config", "default")
+        portal_host_ip = ""
+        if portal_host_config:
+            portal_host_ip = portal_host_config.data["portal_host_ip"]
+            logger.info("The portal host ip is {}".format(portal_host_ip))
+        else:
+            logger.info("No portal host is configured.")
+
+        subnets = self.store.get_nets_in_vpc(bouncer.vpc)
+
         # remove portal hosts from the droplet set
         portal_droplet = ""
-        subnet_ips = set()
-        logger.info("The current config portal host is {}".format(CONFIG.PORTAL_HOST))
+        external_subnet_ips = set()
         for subnet in subnets.values():
             if subnet.external:
-                subnet_ips.add(subnet.ip)
+                external_subnet_ips.add(subnet.ip)
                 logger.info("A subnet ip {} for subnet {} has been added.".format( subnet.ip, subnet.name))
 
         for dd in droplets:
-            if dd.ip == CONFIG.PORTAL_HOST:
+            if dd.ip == portal_host_ip:
                 portal_droplet = dd
                 logger.info("A droplet {} has been added as portal.".format(dd.ip))
 
@@ -113,13 +123,13 @@ class DropletOperator(object):
             droplets.remove(portal_droplet)
             logger.info("The portal droplet {} has been removed.".format(portal_droplet))
 
-        if bouncer.get_nip() in subnet_ips and portal_droplet != "":
+        if bouncer.get_nip() in external_subnet_ips and portal_droplet != "":
             # for external subnets, use the portal host instead of picking a host as bouncer
             d = portal_droplet
             logger.info("external subnet, using portal droplet {}".format(d.ip))
         else:
             for dd in droplets:
-                logger.info("goose: elegible droplet for bouncer {} {}".format(dd.name, dd.ip))
+                logger.info("elegible droplet for bouncer {} {}".format(dd.name, dd.ip))
             d = random.sample(droplets, 1)[0]
 
         logger.info("assign_bouncer_droplet in action: name={}, ip={}, mac={}, bouncer nip={}".format(d.name, d.ip, d.mac, bouncer.get_nip()))
@@ -132,9 +142,19 @@ class DropletOperator(object):
         if len(droplets) == 0:
             return False
 
+        # Read portal_host_ip from configmap
+        portal_host_config = kube_read_config_map(self.core_api,  "portal-host-config", "default")
+        portal_host_ip = ""
+        if portal_host_config:
+            portal_host_ip = portal_host_config.data["portal_host_ip"]
+            logger.info("The portal host ip is {}".format(portal_host_ip))
+        else:
+            logger.info("No portal host is configured.")
+
+
         portal_droplet = ""
         for dd in droplets:
-            if dd.ip == CONFIG.PORTAL_HOST:
+            if dd.ip == portal_host_ip:
                 portal_droplet = dd
                 logger.info("The portal droplet {} has been added.".format(dd.ip))
 

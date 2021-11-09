@@ -8,8 +8,6 @@ from concurrent import futures
 from mizar.daemon.interface_service import InterfaceServer
 from mizar.daemon.droplet_service import DropletServer
 from mizar.common.constants import CONSTANTS
-from mizar.common.config import CONFIG
-from mizar.common.common import get_portal_host
 import mizar.proto.interface_pb2_grpc as interface_pb2_grpc
 import mizar.proto.interface_pb2 as interface_pb2
 import mizar.proto.droplet_pb2_grpc as droplet_pb2_grpc
@@ -62,13 +60,10 @@ def init(benchmark=False):
         transit_xdp_path = "/trn_xdp/trn_transit_xdp_ebpf_debug.o"
         tc_edt_ebpf_path = "/trn_xdp/trn_edt_tc_ebpf_debug.o"
 
-    CONFIG.PORTAL_HOST = get_portal_host()
-    logger.info("The current config portal host is {}".format(CONFIG.PORTAL_HOST))
     config = {
         "xdp_path": transit_xdp_path,
         "pcapfile": "/bpffs/transit_xdp.pcap",
-        "xdp_flag": CONSTANTS.XDP_GENERIC,
-        "portal_host": CONFIG.PORTAL_HOST
+        "xdp_flag": CONSTANTS.XDP_GENERIC
     }
     config = json.dumps(config)
     cmd = (
