@@ -122,13 +122,8 @@ int *update_vpc_1_svc(rpc_trn_vpc_t *vpc, struct svc_req *rqstp)
 		goto error;
 	}
 
-	TRN_LOG_DEBUG(
-                "update_vpc_1 VPC tunid: %ld with %d routers with portal: 0x%x",
-                vpc->tunid, vpc->routers_ips.routers_ips_len, md->portal_host);
-
 	vpckey.tunnel_id = vpc->tunid;
 	vpcval.nrouters = vpc->routers_ips.routers_ips_len;
-        vpcval.portal_host = md->portal_host;
 
 	if (vpcval.nrouters > TRAN_MAX_NROUTER) {
 		TRN_LOG_WARN("Number of maximum transit routers exceeded,"
@@ -166,9 +161,9 @@ int *update_net_1_svc(rpc_trn_network_t *net, struct svc_req *rqstp)
 	struct network_t netval;
 
 	TRN_LOG_DEBUG("update_net_1 net tunid: %ld, netip: 0x%x, "
-		      "prefixlen: %d, with %d switches",
+		      "prefixlen: %d, with %d switches, portal 0x%x",
 		      net->tunid, net->netip, net->prefixlen,
-		      net->switches_ips.switches_ips_len);
+		      net->switches_ips.switches_ips_len, net->portal_host);
 
 	struct user_metadata_t *md = trn_itf_table_find(itf);
 
@@ -196,13 +191,14 @@ int *update_net_1_svc(rpc_trn_network_t *net, struct svc_req *rqstp)
 	netval.nip[0] = netkey.nip[0];
 	netval.nip[1] = netkey.nip[1];
 	netval.nip[2] = netkey.nip[2];
-
+	netval.portal_host = net->portal_host;
+	
 	rc = trn_update_network(md, &netkey, &netval);
 
 	if (rc != 0) {
 		TRN_LOG_ERROR(
-			"Failure updating net %ld, %d data on interface: %s",
-			net->tunid, net->netip, itf);
+			"Failure updating net %ld, %d data with portal 0x%x on interface: %s",
+			net->tunid, net->netip, net->portal_host, itf);
 		result = RPC_TRN_ERROR;
 		goto error;
 	}
@@ -644,12 +640,11 @@ int *load_transit_xdp_1_svc(rpc_trn_xdp_intf_t *xdp_intf, struct svc_req *rqstp)
 	strcpy(md->pcapfile, xdp_intf->pcapfile);
 	md->pcapfile[255] = '\0';
 	md->xdp_flags = xdp_intf->xdp_flag;
-	md->portal_host = xdp_intf->portal_host;
 
-	TRN_LOG_DEBUG("load_transit_xdp_1 path: %s, pcap: %s, portal: 0x%x",
-		      xdp_intf->xdp_path, xdp_intf->pcapfile, xdp_intf->portal_host);
+	TRN_LOG_DEBUG("load_transit_xdp_1 path: %s, pcap: %s",
+		      xdp_intf->xdp_path, xdp_intf->pcapfile);
 
-	rc = trn_user_metadata_init(md, itf, kern_path, md->xdp_flags, md->portal_host);
+	rc = trn_user_metadata_init(md, itf, kern_path, md->xdp_flags);
 
 	if (rc != 0) {
 		TRN_LOG_ERROR(

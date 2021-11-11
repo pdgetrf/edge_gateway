@@ -45,6 +45,7 @@ class DividerOperator(object):
         logger.info(kwargs)
         self.store = OprStore()
         config.load_incluster_config()
+        self.core_api = client.CoreV1Api()
         self.obj_api = client.CustomObjectsApi()
 
     def query_existing_dividers(self):
@@ -78,7 +79,8 @@ class DividerOperator(object):
             logger.info("zzzzz {}".format(dd))
 
     def update_divider_with_bouncers(self, bouncer, net):
-        logger.info("goose 1")
+        net.set_portal_host(get_portal_host(self.core_api))
+
         dividers = self.store.get_dividers_of_vpc(bouncer.vpc).values()
         for d in dividers:
             d.update_net(net)
@@ -89,6 +91,8 @@ class DividerOperator(object):
             d.update_net(net, False)
 
     def update_net(self, net, dividers=None):
+        net.set_portal_host(get_portal_host(self.core_api))
+
         if not dividers:
             dividers = self.store.get_dividers_of_vpc(net.vpc).values()
         for d in dividers:

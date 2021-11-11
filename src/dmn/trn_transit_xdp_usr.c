@@ -538,7 +538,7 @@ static int _reuse_shared_map_if_exists(struct bpf_object *pobj, const char *map_
 }
 
 int trn_user_metadata_init(struct user_metadata_t *md, char *itf,
-			   char *kern_path, int xdp_flags, int portal_host)
+			   char *kern_path, int xdp_flags)
 {
 	int rc;
 	struct rlimit r = { RLIM_INFINITY, RLIM_INFINITY };
@@ -547,7 +547,6 @@ int trn_user_metadata_init(struct user_metadata_t *md, char *itf,
 						     .file = kern_path };
 	__u32 info_len = sizeof(md->info);
 	md->xdp_flags = xdp_flags;
-	md->portal_host = portal_host;
 
 	if (setrlimit(RLIMIT_MEMLOCK, &r)) {
 		TRN_LOG_ERROR("setrlimit(RLIMIT_MEMLOCK)");

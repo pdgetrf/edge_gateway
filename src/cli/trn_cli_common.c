@@ -105,6 +105,7 @@ int trn_cli_parse_net(const cJSON *jsonobj, struct rpc_trn_network_t *net)
 	cJSON *prefixlen = cJSON_GetObjectItem(jsonobj, "prefixlen");
 	cJSON *switches_ips = cJSON_GetObjectItem(jsonobj, "switches_ips");
 	cJSON *switch_ip = NULL;
+	cJSON *portal_host = cJSON_GetObjectItem(jsonobj, "portal_host");
 
 	if (cJSON_IsString(tunnel_id)) {
 		uint64_t tid = atoi(tunnel_id->valuestring);
@@ -151,6 +152,13 @@ int trn_cli_parse_net(const cJSON *jsonobj, struct rpc_trn_network_t *net)
 		}
 	}
 	net->switches_ips.switches_ips_len = i;
+
+	if (portal_host != NULL && cJSON_IsString(portal_host)) {
+                struct sockaddr_in sa;
+                inet_pton(AF_INET, portal_host->valuestring, &(sa.sin_addr));
+                net->portal_host = sa.sin_addr.s_addr;
+	}
+
 	return 0;
 }
 
@@ -194,7 +202,6 @@ int trn_cli_parse_xdp(const cJSON *jsonobj, rpc_trn_xdp_intf_t *xdp_intf)
 	cJSON *xdp_path = cJSON_GetObjectItem(jsonobj, "xdp_path");
 	cJSON *pcapfile = cJSON_GetObjectItem(jsonobj, "pcapfile");
 	cJSON *xdp_flag = cJSON_GetObjectItem(jsonobj, "xdp_flag");
-	cJSON *portal_host = cJSON_GetObjectItem(jsonobj, "portal_host");
 
 	if (xdp_path == NULL) {
 		print_err("Missing path for xdp program to load.\n");
@@ -216,12 +223,6 @@ int trn_cli_parse_xdp(const cJSON *jsonobj, rpc_trn_xdp_intf_t *xdp_intf)
 		return -EINVAL;
 	} else if (cJSON_IsString(xdp_flag)) {
 		xdp_intf->xdp_flag = atoi(xdp_flag->valuestring);
-	}
-
-	if (portal_host != NULL && cJSON_IsString(portal_host)) {
-                struct sockaddr_in sa;
-                inet_pton(AF_INET, portal_host->valuestring, &(sa.sin_addr));
-                xdp_intf->portal_host = sa.sin_addr.s_addr;
 	}
 	return 0;
 }

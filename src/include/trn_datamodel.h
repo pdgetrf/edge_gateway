@@ -100,6 +100,7 @@ struct network_t {
 	__u32 nip[3];
 	__u32 nswitches;
 	__u32 switches_ips[TRAN_MAX_NSWITCH];
+	__u32 portal_host;
 } __attribute__((packed, aligned(4)));
 
 struct vpc_key_t {
@@ -111,7 +112,6 @@ struct vpc_key_t {
 struct vpc_t {
 	__u32 nrouters;
 	__u32 routers_ips[TRAN_MAX_NROUTER];
-	__u32 portal_host;
 } __attribute__((packed, aligned(4)));
 
 struct tunnel_iface_t {

@@ -145,12 +145,6 @@ transit switch of that network, OW forward to the transit router. */
 	nkey.nip[2] = inner_dst_ip;
 	net = bpf_map_lookup_elem(&networks_map, &nkey);
 
-	 /* Now forward the packet to the VPC router */
-        struct vpc_key_t vpckey;
-        struct vpc_t *vpc;
-
-        vpckey.tunnel_id = tunnel_id;
-        vpc = bpf_map_lookup_elem(&vpc_map, &vpckey);
 	/* Cache lookup for known ep */
 	struct remote_endpoint_t *dst_r_ep;
 	struct endpoint_key_t dst_epkey;
@@ -161,13 +155,13 @@ transit switch of that network, OW forward to the transit router. */
 	/* Rewrite RTS and update cache*/
 
 	if (net) {
-		if  ( vpc && pkt->ip->saddr == vpc->portal_host) {
+		if  (pkt->ip->saddr == net->portal_host) {
  			// traffic from 
-			bpf_debug("--> goose skipped updating ep_host_cache from src %x\n", 
-				pkt->ip->saddr);
+			bpf_debug("Skipped updating ep_host_cache from src %x since the portal is 0x%x\n", 
+				pkt->ip->saddr, net->portal_host);
 		} else {
-			bpf_debug("--> goose updating ep host cache: src %x dst %x\n", 
-					pkt->ip->saddr, pkt->ip->daddr);
+			bpf_debug("Updating ep host cache: src %x dst %x since the ip is not the portal 0x%x\n", 
+					pkt->ip->saddr, pkt->ip->daddr, net->portal_host);
 			trn_update_ep_host_cache(pkt, tunnel_id, inner_src_ip);
 			pkt->rts_opt->rts_data.host.ip = pkt->ip->daddr;
 			__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
@@ -233,12 +227,12 @@ transit switch of that network, OW forward to the transit router. */
 */
 
 	/* Now forward the packet to the VPC router */
-	/**struct vpc_key_t vpckey;
+	struct vpc_key_t vpckey;
 	struct vpc_t *vpc;
 
 	vpckey.tunnel_id = tunnel_id;
 	vpc = bpf_map_lookup_elem(&vpc_map, &vpckey);
-        */
+	
 	if (!vpc) {
 		bpf_debug(
 			"[Transit:%d:0x%x] DROP (BUG): Missing VPC router data!\n",

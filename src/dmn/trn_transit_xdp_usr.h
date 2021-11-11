@@ -115,7 +115,6 @@ struct user_metadata_t {
 	__u32 xdp_flags;
 	int prog_fd;
 	__u32 prog_id;
-	__u32 portal_host;
 
 	char pcapfile[256];
 	int itf_idx[TRAN_MAX_ITF];
@@ -216,7 +215,7 @@ int trn_delete_network(struct user_metadata_t *md,
 		       struct network_key_t *netkey);
 
 int trn_user_metadata_init(struct user_metadata_t *md, char *itf,
-			   char *kern_path, int xdp_flags, int portal_host);
+			   char *kern_path, int xdp_flags);
 
 uint32_t trn_get_interface_ipv4(int itf_idx);
 
