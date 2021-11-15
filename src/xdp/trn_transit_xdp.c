@@ -232,7 +232,7 @@ transit switch of that network, OW forward to the transit router. */
 
 	vpckey.tunnel_id = tunnel_id;
 	vpc = bpf_map_lookup_elem(&vpc_map, &vpckey);
-	
+
 	if (!vpc) {
 		bpf_debug(
 			"[Transit:%d:0x%x] DROP (BUG): Missing VPC router data!\n",
