@@ -155,13 +155,13 @@ transit switch of that network, OW forward to the transit router. */
 	/* Rewrite RTS and update cache*/
 
 	if (net) {
-		if  (pkt->ip->saddr == 0xd9021fac) { //0xd9021fac --> gateway host (172.31.2.217) 
+		if  (pkt->ip->saddr == net->portal_host_ip) {
  			// traffic from 
-			bpf_debug("--> goose skipped updating ep_host_cache from src %x\n", 
-				pkt->ip->saddr);
+			bpf_debug("Skipped updating ep_host_cache from src %x since the portal is 0x%x\n", 
+				pkt->ip->saddr, net->portal_host_ip);
 		} else {
-			bpf_debug("--> goose updating ep host cache: src %x dst %x\n", 
-					pkt->ip->saddr, pkt->ip->daddr);
+			bpf_debug("Updating ep host cache: src %x dst %x since the ip is not the portal 0x%x\n", 
+					pkt->ip->saddr, pkt->ip->daddr, net->portal_host_ip);
 			trn_update_ep_host_cache(pkt, tunnel_id, inner_src_ip);
 			pkt->rts_opt->rts_data.host.ip = pkt->ip->daddr;
 			__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,

@@ -161,9 +161,9 @@ int *update_net_1_svc(rpc_trn_network_t *net, struct svc_req *rqstp)
 	struct network_t netval;
 
 	TRN_LOG_DEBUG("update_net_1 net tunid: %ld, netip: 0x%x, "
-		      "prefixlen: %d, with %d switches",
+		      "prefixlen: %d, with %d switches, portal 0x%x",
 		      net->tunid, net->netip, net->prefixlen,
-		      net->switches_ips.switches_ips_len);
+		      net->switches_ips.switches_ips_len, net->portal_host_ip);
 
 	struct user_metadata_t *md = trn_itf_table_find(itf);
 
@@ -191,13 +191,14 @@ int *update_net_1_svc(rpc_trn_network_t *net, struct svc_req *rqstp)
 	netval.nip[0] = netkey.nip[0];
 	netval.nip[1] = netkey.nip[1];
 	netval.nip[2] = netkey.nip[2];
-
+	netval.portal_host_ip = net->portal_host_ip;
+	
 	rc = trn_update_network(md, &netkey, &netval);
 
 	if (rc != 0) {
 		TRN_LOG_ERROR(
-			"Failure updating net %ld, %d data on interface: %s",
-			net->tunid, net->netip, itf);
+			"Failure updating net %ld, %d data with portal 0x%x on interface: %s",
+			net->tunid, net->netip, net->portal_host_ip, itf);
 		result = RPC_TRN_ERROR;
 		goto error;
 	}

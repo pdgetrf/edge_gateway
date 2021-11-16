@@ -105,6 +105,7 @@ int trn_cli_parse_net(const cJSON *jsonobj, struct rpc_trn_network_t *net)
 	cJSON *prefixlen = cJSON_GetObjectItem(jsonobj, "prefixlen");
 	cJSON *switches_ips = cJSON_GetObjectItem(jsonobj, "switches_ips");
 	cJSON *switch_ip = NULL;
+	cJSON *portal_host = cJSON_GetObjectItem(jsonobj, "portal_host");
 
 	if (cJSON_IsString(tunnel_id)) {
 		uint64_t tid = atoi(tunnel_id->valuestring);
@@ -151,6 +152,13 @@ int trn_cli_parse_net(const cJSON *jsonobj, struct rpc_trn_network_t *net)
 		}
 	}
 	net->switches_ips.switches_ips_len = i;
+
+	if (portal_host != NULL && cJSON_IsString(portal_host)) {
+                struct sockaddr_in sa;
+                inet_pton(AF_INET, portal_host->valuestring, &(sa.sin_addr));
+                net->portal_host_ip = sa.sin_addr.s_addr;
+	}
+
 	return 0;
 }
 

@@ -96,13 +96,7 @@ class DropletOperator(object):
         subnets = self.store.get_nets_in_vpc(bouncer.vpc)
 
         # Read portal_host_ip from configmap
-        portal_host_config = kube_read_config_map(self.core_api, "portal-host-config", "default")
-        portal_host_ip = ""
-        if portal_host_config:
-            portal_host_ip = portal_host_config.data["portal_host_ip"]
-            logger.info("The portal host ip is {}".format(portal_host_ip))
-        else:
-            logger.info("No portal host is configured.")
+        portal_host_ip = get_portal_host(self.core_api)
 
         subnets = self.store.get_nets_in_vpc(bouncer.vpc)
 
@@ -143,14 +137,7 @@ class DropletOperator(object):
             return False
 
         # Read portal_host_ip from configmap
-        portal_host_config = kube_read_config_map(self.core_api,  "portal-host-config", "default")
-        portal_host_ip = ""
-        if portal_host_config:
-            portal_host_ip = portal_host_config.data["portal_host_ip"]
-            logger.info("The portal host ip is {}".format(portal_host_ip))
-        else:
-            logger.info("No portal host is configured.")
-
+        portal_host_ip = get_portal_host(self.core_api)
 
         portal_droplet = ""
         for dd in droplets:

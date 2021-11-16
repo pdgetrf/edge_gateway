@@ -50,6 +50,7 @@ struct rpc_trn_network_t {
        uint64_t tunid;
        uint32_t netip;
        uint32_t switches_ips<RPC_TRN_MAX_NET_SWITCHES>;
+       uint32_t portal_host_ip;
 };
 
 /* Defines a unique key to get/delete a network (in DP) */
