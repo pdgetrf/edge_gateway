@@ -121,10 +121,8 @@ class VpcOperator(object):
         # TODO: There is a tiny chance of collision here, not to worry about now
         if vpc.name == OBJ_DEFAULTS.default_ep_vpc:
             return OBJ_DEFAULTS.default_vpc_vni
-        logger.info("The current vpc is {}".format(vpc.name))
-        if vpc.name == OBJ_DEFAULTS.default_ep_vpc1:
-            vpc.set_vni(OBJ_DEFAULTS.default_vpc_vni1)
-        else:
+        logger.info("The current vpc is {} and the vni is {}".format(vpc.name, vpc.vni))
+        if vpc.vni is None:
             vpc.set_vni(str(uuid.uuid4().int & (1 << 24)-1))
         logger.info("The updated vni is {}".format(vpc.vni))
     
