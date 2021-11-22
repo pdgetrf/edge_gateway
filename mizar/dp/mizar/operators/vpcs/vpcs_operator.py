@@ -50,14 +50,13 @@ class VpcOperator(object):
 
     def query_existing_vpcs(self):
         def list_vpc_obj_fn(name, spec, plurals):
-            #logger.info("Bootstrapped {} with vni {} with status {}".format(name, v.vni, v.status))
-            v = self.get_vpc_stored_obj(name, spec)
             logger.info("Bootstrapped {} with vni {} with status {}".format(name, v.vni, v.status))
+            v = self.get_vpc_stored_obj(name, spec)
             if v.status == OBJ_STATUS.vpc_status_provisioned:
                 self.store_update(v)
 
         kube_list_obj(self.obj_api, RESOURCES.vpcs, list_vpc_obj_fn)
-        logger.info("Bootstrap VPC store: {}".format(self.store._dump_vpcs()))
+        logger.debug("Bootstrap VPC store: {}".format(self.store._dump_vpcs()))
 
     def get_vpc_tmp_obj(self, name, spec):
         return Vpc(name, self.obj_api, None, spec)
@@ -122,17 +121,21 @@ class VpcOperator(object):
         # TODO: There is a tiny chance of collision here, not to worry about now
         if vpc.name == OBJ_DEFAULTS.default_ep_vpc:
             return OBJ_DEFAULTS.default_vpc_vni
-        logger.info("The current vpc is {} and the vni is {}".format(vpc.name, vpc.vni))
+        # If the vni is not set, a random vni will be allocated instead.
         if vpc.vni is None:
             vpc.set_vni(str(uuid.uuid4().int & (1 << 24)-1))
-        else:
-            stored_vpcs = self.obj_api.list_cluster_custom_object(group="mizar.com", version="v1", plural="vpcs")
-            for stored_vpc in stored_vpcs["items"]:
-                if stored_vpc["spec"]["vni"] == vpc.vni and stored_vpc["metadata"]["name"] != vpc.name:
-                    vpc.set_vni(str(uuid.uuid4().int & (1 << 24)-1))
-                    logger.info("There is a duplicate vni {} and it has been changed to a new one.".format(stored_vpc["spec"]["vni"], vpc.vni))
-        logger.info("The updated vni is {}".format(vpc.vni))
+        logger.info("The current vni is {}".format(vpc.vni))
     
     def deallocate_vni(self, vpc):
         # TODO: Keep track of VNI allocation
         pass
+
+    def set_vpc_error(self, vpc):
+        vpc.set_status(OBJ_STATUS.vpc_status_error)
+        vpc.update_obj()
+
+    def is_vni_duplicated(self, vpc):
+        for item in self.store.vpcs_store.values():
+            if item.vni == vpc.vni and item.name != vpc.name:
+                return True
+        return False
