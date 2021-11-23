@@ -50,7 +50,7 @@ class VpcOperator(object):
 
     def query_existing_vpcs(self):
         def list_vpc_obj_fn(name, spec, plurals):
-            logger.info("Bootstrapped {}".format(name))
+            logger.info("Bootstrapped {} with vni {} with status {}".format(name, v.vni, v.status))
             v = self.get_vpc_stored_obj(name, spec)
             if v.status == OBJ_STATUS.vpc_status_provisioned:
                 self.store_update(v)
@@ -121,13 +121,21 @@ class VpcOperator(object):
         # TODO: There is a tiny chance of collision here, not to worry about now
         if vpc.name == OBJ_DEFAULTS.default_ep_vpc:
             return OBJ_DEFAULTS.default_vpc_vni
-        logger.info("The current vpc is {}".format(vpc.name))
-        if vpc.name == OBJ_DEFAULTS.default_ep_vpc1:
-            vpc.set_vni(OBJ_DEFAULTS.default_vpc_vni1)
-        else:
+        # If the vni is not set, a random vni will be allocated instead.
+        if vpc.vni is None:
             vpc.set_vni(str(uuid.uuid4().int & (1 << 24)-1))
-        logger.info("The updated vni is {}".format(vpc.vni))
+        logger.info("The current vni is {}".format(vpc.vni))
     
     def deallocate_vni(self, vpc):
         # TODO: Keep track of VNI allocation
         pass
+
+    def set_vpc_error(self, vpc):
+        vpc.set_status(OBJ_STATUS.vpc_status_error)
+        vpc.update_obj()
+
+    def is_vni_duplicated(self, vpc):
+        for item in self.store.vpcs_store.values():
+            if item.vni == vpc.vni and item.name != vpc.name:
+                return True
+        return False
