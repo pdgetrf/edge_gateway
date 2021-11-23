@@ -45,8 +45,6 @@ class VpcCreate(WorkflowTask):
         if vpcs_opr.is_vni_duplicated(v):
             # Set vpc status to error instead of raising errors since the latter does not trigger the workflow in future
             vpcs_opr.set_vpc_error(v)
-            #self.raise_temporary_error(
-            #        "Task: {} VPC: {} Duplicated vni {}.".format(self.__class__.__name__, v.name, v.vni))
         else:
             if len(droplets_opr.store.get_all_droplets()) == 0:
                 self.raise_temporary_error(
