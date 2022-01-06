@@ -38,6 +38,7 @@
 #include <linux/udp.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "extern/bpf_endian.h"
 #include "extern/bpf_helpers.h"
@@ -155,10 +156,19 @@ transit switch of that network, OW forward to the transit router. */
 
 	/* Rewrite RTS and update cache*/
 	if (net) {
-		trn_update_ep_host_cache(pkt, tunnel_id, inner_src_ip);
-		pkt->rts_opt->rts_data.host.ip = pkt->ip->daddr;
-		__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
-				 pkt->eth->h_dest, 6 * sizeof(unsigned char));
+		/*
+		 * do not establish direct path if pkt came from a gateway host 
+		 *
+		 *  0xd9021fac   --> left gateway host (172.31.2.217)
+		 *  0xac0d1fac   --> right gateway host (172.31.13.172)
+		 */
+		bool is_gateway = (pkt->ip->saddr == 0xd9021fac);
+		if (!is_gateway) {
+			trn_update_ep_host_cache(pkt, tunnel_id, inner_src_ip);
+			pkt->rts_opt->rts_data.host.ip = pkt->ip->daddr;
+			__builtin_memcpy(pkt->rts_opt->rts_data.host.mac,
+					pkt->eth->h_dest, 6 * sizeof(unsigned char));
+		}
 	}
 
 	if (dst_r_ep) {
@@ -453,6 +463,36 @@ static __inline int trn_process_inner_ip(struct transit_packet *pkt)
 	}
 
 	__be64 tunnel_id = trn_vni_to_tunnel_id(pkt->geneve->vni);
+
+	/*
+	 * send pkt to user space if this is the edge gateway and dest inner ip belongs to a remote (virtual) subnet
+	 *
+	 *  0xd9021fac   --> left portal host (172.31.2.217)
+	 *  0xac0d1fac   --> right portal host (172.31.13.172)
+         */
+	bool is_gateway = (pkt->ip->daddr == 0xd9021fac);
+	if (is_gateway) {
+		bpf_debug("[Transit:%d:0x%x] Edge gateway\n", __LINE__, bpf_ntohl(pkt->inner_ip->daddr));
+
+		/*
+		 * if target ip is towards a remote subnet, send it up to user space
+		 */
+		struct network_key_t nkey;
+		struct network_t *net;
+		nkey.prefixlen = 96;
+
+		// "__u32 nip[3]" has 12 bytes altogether
+		// tunnel_id is bit-wise 64 bit and occupies the first 8 bytes
+		// tip (target inner ip) occupies the rest 4 bytes
+		__builtin_memcpy(&nkey.nip[0], &tunnel_id, sizeof(tunnel_id));
+		nkey.nip[2] = pkt->inner_ip->daddr;
+		net = bpf_map_lookup_elem(&networks_map_virtual, &nkey);
+
+		/* Rewrite RTS and update cache*/
+		if (net) {
+			return XDP_PASS;
+		}
+	}
 
 	if (pkt->inner_ipv4_tuple.protocol == IPPROTO_TCP || pkt->inner_ipv4_tuple.protocol == IPPROTO_UDP) {
 		__u8 *tracked_state = get_originated_conn_state(&conn_track_cache, tunnel_id, &pkt->inner_ipv4_tuple);
